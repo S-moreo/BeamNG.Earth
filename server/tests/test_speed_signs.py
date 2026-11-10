@@ -260,3 +260,43 @@ class ClassTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TileRulesTest(unittest.TestCase):
+    """signstream.tile_rules: a sign tile's units and face from its own place, not the anchor's (GitHub #1046)."""
+
+    class Frame:
+        def enu_to_geodetic(self, x, y, z):
+            return 49.2 + y / M_LAT, -122.8 + x / M_LON, z
+
+    def rules(self, here, country, mph, us=False):
+        import countrybounds
+        import signstream
+
+        class Index:
+            def at(self, lat, lon):
+                return here
+        with mock.patch.object(countrybounds, "bundled", lambda: Index()):
+            return signstream.tile_rules(self.Frame(), (0.0, 0.0, 250.0, 250.0), country, mph, us)
+
+    def test_a_canadian_tile_of_an_anchor_across_the_border_posts_kmh_on_rb1(self):
+        country, mph = self.rules("CA", "US", True)
+        self.assertEqual((country, mph), ("CA", False))
+        self.assertEqual(speedsigns.style(country, False), speedsigns.STYLE_CANADA)
+        self.assertEqual(speedsigns.posted(50.0, mph, speedsigns.style(country, False)), 80.0)
+
+    def test_the_anchors_rules_without_border_data(self):
+        self.assertEqual(self.rules(None, "CA", False), ("CA", False))
+        self.assertEqual(self.rules(None, "GB", True), ("GB", True))
+
+    def test_a_tile_in_a_us_state_posts_mph(self):
+        self.assertEqual(self.rules("US", "CA", False, us=True), ("US", True))
+
+    def test_a_failed_lookup_keeps_the_anchors_rules(self):
+        import countrybounds
+        import signstream
+
+        def boom():
+            raise OSError("no data")
+        with mock.patch.object(countrybounds, "bundled", boom):
+            self.assertEqual(signstream.tile_rules(self.Frame(), (0, 0, 1, 1), "SE", False), ("SE", False))
