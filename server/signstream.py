@@ -16,6 +16,7 @@ import numpy as np
 
 import highwaysigns
 import mergesigns
+import navgraph
 import roadmesh
 import roads
 import signstates
@@ -54,6 +55,26 @@ def write_tile(out_dir, vfs_dir, aid, tx, ty, meshes, dirs_faces=None):
     return f'{vfs_dir}/{name}', sum(1 for kind in KINDS if kind in data)
 
 
+def tile_rules(frame, box, country, mph, us=False):
+    """(country, mph) of the sign tile at box (x0, y0, x1, y1) in frame: its own place's (countrybounds at its centre)
+    where the border data knows it, else the anchor's as given. The anchor may be across a border (or its nearest
+    airport's country may be): BC tiles of an anchor whose nearest airport is in Washington drew the Vienna face
+    (not a US state, signstates) with mph on it (GitHub #1046). A tile in a US state (us) posts mph."""
+    x0, y0, x1, y1 = box
+    try:
+        import countrybounds
+        la, lo, _ = frame.enu_to_geodetic((x0 + x1) / 2, (y0 + y1) / 2, 0.)
+        here = countrybounds.bundled().at(float(la), float(lo))
+    except Exception:           # (optional scenery: no border data, no lookup)
+        log.debug("sign tile country lookup failed", exc_info=True)
+        here = None
+    if here:
+        country, mph = here, bool(navgraph.road_rules(here)["mph"])
+    if us:
+        mph = True
+    return country, mph
+
+
 def build_tile(md, frame, aid, tx, ty, elev, out_dir, vfs_dir, urban=None, widths=None,
                left_hand=False, mph=True, country=None, dirs=False):
     source = getattr(md, 'highway_signs', None)
@@ -62,6 +83,7 @@ def build_tile(md, frame, aid, tx, ty, elev, out_dir, vfs_dir, urban=None, width
     x0, y0, x1, y1 = roads.tile_bbox(tx, ty)
     la, lo, _ = frame.enu_to_geodetic(np.array([x0, x1]), np.array([y0, y1]), 0.)
     us = bool((signstates.states(la, lo) != '').any())
+    country, mph = tile_rules(frame, (x0, y0, x1, y1), country, mph, us)
     context = source.context(urban, widths)
     feats = context.around(np.c_[lo, la])
     # Conservative deck footprints exclude ground signs on/under overpasses without
