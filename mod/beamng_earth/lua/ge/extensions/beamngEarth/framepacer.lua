@@ -57,12 +57,24 @@ function M.step(frameMs)
 end
 
 local socket = nil
+local slept = 0         -- ms asked of M.sleep since the last M.takeSlept (the profiler's "FramePacer" row)
 function M.sleep(ms)
   if socket == nil then
     local ok, s = pcall(require, 'socket')
     socket = ok and type(s) == 'table' and s.sleep and s or false
   end
-  if socket then socket.sleep(ms / 1000) end
+  if socket then
+    socket.sleep(ms / 1000)
+    slept = slept + ms
+  end
+end
+
+-- The pacing waits since the last call (ms), and the count reset. The waits run in onPreRender, inside the engine's
+-- "LuaPre" timer: the profiler (frameprofile.lua) moves them out of it, so a paced frame's Lua does not look busy.
+function M.takeSlept()
+  local v = slept
+  slept = 0
+  return v
 end
 
 return M

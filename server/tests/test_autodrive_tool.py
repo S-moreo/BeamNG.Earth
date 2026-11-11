@@ -66,5 +66,18 @@ class HitchTest(unittest.TestCase):
         self.assertEqual(ad._causes(rows), {"mod.roads": [2, 120], "engine.gfx": [1, 70]})
 
 
+class ProcessMatchTest(unittest.TestCase):
+    def test_server_from_appimage_mount(self):
+        self.assertTrue(ad._is_server("/tmp/.mount_BeamNGfbOENg/usr/lib/BeamNG.Earth/BeamNG.Earth --server --user-dir /x"))
+        self.assertTrue(ad._is_server("python3 server/earthd.py --user-dir /x"))
+        self.assertFalse(ad._is_server("/tmp/.mount_BeamNGfbOENg/usr/lib/BeamNG.Earth/BeamNG.Earth --multiprocessing-fork"))
+
+    def test_game_in_any_steam_library(self):
+        self.assertTrue(ad._is_game("/home/u/SteamLibrary/steamapps/common/BeamNG.drive/BinLinux/BeamNG.drive.x64 -userpath /x"))
+        self.assertTrue(ad._is_game("/home/u/.local/share/Steam/steamapps/common/BeamNG.drive/BinLinux/BeamNG.drive.x64"))
+        self.assertFalse(ad._is_game("/home/u/SteamLibrary/steamapps/common/BeamNG.drive/BinLinux/BeamNG.drive.x64 --type=renderer"))
+        self.assertFalse(ad._is_game("srt-bwrap --args 26 -- /x/BinLinux/BeamNG.drive.x64 -forcecloud on"))
+
+
 if __name__ == "__main__":
     unittest.main()

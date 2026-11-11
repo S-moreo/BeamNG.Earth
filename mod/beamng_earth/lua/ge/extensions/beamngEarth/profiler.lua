@@ -77,6 +77,29 @@ function M.setEnabled(on)
   if not on and lastSend then lastSend({ type = 'runtime_profiler', enabled = false }) end
 end
 
+-- For scripts polling the profiler over MCP (tools/perf_watch.py and the like): the snapshot without its per-frame
+-- arrays (frameDetail.history: 600 frames x ~40 phases, plot, the server's job lists, the I/O history). A full
+-- snapshot is ~1.2-1.5 MB of JSON, made and encoded on the game thread: polled every 20 s it cost 60-120 ms frames
+-- (mcp_server.onUpdate), and a game crash on 2026-11-10 came while one was being encoded. The aggregates stay:
+-- percentiles, per-phase series averages, worst frame, observations, parts, pools, stages, latency.
+function M.summary()
+  local s = M.snapshot()
+  local fd = s.frameDetail
+  if type(fd) == 'table' then
+    fd.history, fd._layouts = nil, nil
+  end
+  s.plot, s.ioHistory = nil, nil
+  if type(s.server) == 'table' then
+    local srv = {}
+    for k, v in pairs(s.server) do
+      if k ~= 'recent' and k ~= 'active' then srv[k] = v end
+    end
+    srv.activeCount = type(s.server.active) == 'table' and #s.server.active or nil
+    s.server = srv
+  end
+  return s
+end
+
 function M.serverHello(version)
   supported, supportedVersion = version == 1 or version == 2, version
   M.reset()

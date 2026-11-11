@@ -88,4 +88,23 @@ local resized=summary._layouts.cpu.layout
 T.check(UI.hit(resized,599).id==summary.history[#summary.history].id,'resized graph hit testing still reaches latest frame')
 F.reset()
 T.check(F.analyze().count==0 and #F.analyze().observations==0,'empty capture has no invented observations')
+
+-- the frame pacer's sleep moves out of LuaPre into its own row (framepacer.takeSlept)
+do
+  local P=require('beamngEarth/framepacer')
+  F.reset(); P.takeSlept()
+  package.loaded.socket={sleep=function() end}
+  P.sleep(3)
+  F.add(20,{}, {cpu={LuaPre=4,Render=5}})
+  local g=F.history()[1]
+  T.near(g.cpu.FramePacer,3,0.001,'pacer wait shown as FramePacer')
+  T.near(g.cpu.LuaPre,1,0.001,'LuaPre keeps only its own work')
+  T.near(g.paceMs,3,0.001,'pace ms kept on the frame')
+  T.check(P.takeSlept()==0,'pacer total taken once')
+  P.sleep(9)
+  F.add(20,{}, {cpu={LuaPre=2}})
+  g=F.history()[2]
+  T.check(g.cpu.FramePacer==2 and g.cpu.LuaPre==nil,'never more than LuaPre moved')
+  package.loaded.socket=nil
+end
 T.done('frameprofile')

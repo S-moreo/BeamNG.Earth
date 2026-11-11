@@ -131,10 +131,69 @@ def _cpu_rss(pids):
 
 def _is_server(cmd):
     """The world server's process: earthd.py from the source folder, or the launcher's --server mode (the source
-    launcher, the AppImage, the .exe)."""
+    launcher, the AppImage -- whose process runs as <mount>/usr/lib/BeamNG.Earth/BeamNG.Earth, not as the .AppImage
+    file --, the .exe)."""
     head = cmd.split(" ", 2)
     return "grep" not in cmd and ("earthd.py" in cmd or (" --server " in cmd + " " and any(
-        h.endswith(("launcher.py", ".AppImage", ".exe")) for h in head)))
+        h.endswith(("launcher.py", ".AppImage", ".exe", "/BeamNG.Earth")) for h in head)))
+
+
+def _is_game(cmd):
+    """The game's main process, from any Steam library (not only ~/.local/share/Steam: a second library, e.g.
+    /home/uGames/SteamLibrary, 2026-11-10) and not its CEF helpers (--type=...) or Steam's runtime wrappers."""
+    exe = cmd.split(" ", 1)[0]
+    return exe.endswith("/BinLinux/BeamNG.drive.x64") and "--type=" not in cmd
+
+
+def _swap_mb(pids):
+    """Swapped-out memory (MB) summed over pids (/proc/<pid>/status VmSwap; 0 where unknown)."""
+    total = 0.0
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/status") as f:
+                for line in f:
+                    if line.startswith("VmSwap:"):
+                        total += int(line.split()[1]) / 1024
+                        break
+        except (OSError, ValueError, IndexError):
+            continue
+    return total
+
+
+def system_pressure():
+    """The machine as a whole (Linux; {} elsewhere): swap in use (MB), MemAvailable (MB), and the CPU / memory pressure
+    stall shares (PSI avg10, %: 'some' = at least one task waited). A swapping machine makes every streaming hitch
+    worse (2026-11-10: the server's workers at ~23 GB on a 32 GB PC, the game 3.6 GB swapped out, collision rebuilds
+    8 -> 60 ms)."""
+    out = {}
+    try:
+        with open("/proc/meminfo") as f:
+            mi = {l.split(":")[0]: int(l.split()[1]) for l in f}
+        out["swapMB"] = round((mi.get("SwapTotal", 0) - mi.get("SwapFree", 0)) / 1024)
+        out["availMB"] = round(mi.get("MemAvailable", 0) / 1024)
+    except (OSError, ValueError, IndexError):
+        pass
+    try:                # the GPU's busy share (amdgpu / Intel xe expose it; NVIDIA does not): with the game's frame times
+        # it tells a GPU-bound frame (busy ~95+ %) from a CPU-bound one (the engine's own GPU timings are unavailable on
+        # Vulkan: frameprofile.lua gpuTiming)
+        import glob
+        busy = []
+        for path in glob.glob("/sys/class/drm/card[0-9]*/device/gpu_busy_percent"):
+            with open(path) as f:
+                busy.append(int(f.read().strip()))
+        if busy:
+            out["gpuBusy"] = max(busy)
+    except (OSError, ValueError):
+        pass
+    for kind in ("cpu", "memory"):
+        try:
+            with open(f"/proc/pressure/{kind}") as f:
+                for line in f:
+                    parts = line.split()
+                    out[f"{kind}{parts[0].capitalize()}"] = float(parts[1].split("=")[1])
+        except (OSError, ValueError, IndexError):
+            pass
+    return out
 
 
 class ProcSampler:
@@ -154,10 +213,7 @@ class ProcSampler:
                 if pp in kids and p not in kids:
                     kids.add(p)
                     changed = True
-        exe = os.path.expanduser("~/.local/share/Steam/steamapps/common/BeamNG.drive/BinLinux/BeamNG.drive.x64")
-        exe = os.path.realpath(exe)     # (Steam's runtime starts it as ~/.steam/steam/..., a link to the same)
-        game = [p for p, (_, c) in ps.items()
-                if c and "--type=" not in c and os.path.realpath(c.split(" ", 1)[0]) == exe]
+        game = [p for p, (_, c) in ps.items() if c and _is_game(c)]
         return {"server": sorted(kids), "game": game}
 
     def sample(self):
@@ -168,7 +224,8 @@ class ProcSampler:
             prev = self.last.get(name)
             pct = round(100 * (cpu - prev[1]) / (now - prev[0]), 1) if prev and now > prev[0] else None
             self.last[name] = (now, cpu)
-            out[name] = {"cpu": pct, "rssMB": round(rss), "procs": len(pids)}
+            out[name] = {"cpu": pct, "rssMB": round(rss), "swapMB": round(_swap_mb(pids)), "procs": len(pids)}
+        out["system"] = system_pressure()
         return out
 
 
@@ -335,7 +392,20 @@ def _cpu(rows):
         v = [r["procs"][name]["cpu"] for r in rows if (r.get("procs") or {}).get(name, {}).get("cpu") is not None]
         if v:
             out[name] = {"avg": round(sum(v) / len(v) / 100, 2), "max": round(max(v) / 100, 2),
-                         "rssMB": max(r["procs"][name]["rssMB"] for r in rows if r.get("procs"))}
+                         "rssMB": max(r["procs"][name]["rssMB"] for r in rows if r.get("procs")),
+                         "swapMB": max(r["procs"][name].get("swapMB") or 0 for r in rows if r.get("procs"))}
+    sysrows = [r["procs"]["system"] for r in rows if (r.get("procs") or {}).get("system")]
+    if sysrows:
+        def peak(k):
+            v = [x[k] for x in sysrows if x.get(k) is not None]
+            return max(v) if v else None
+        def avg(k):
+            v = [x[k] for x in sysrows if x.get(k) is not None]
+            return round(sum(v) / len(v), 1) if v else None
+        out["system"] = {"swapMBmax": peak("swapMB"), "availMBmin": min((x["availMB"] for x in sysrows
+                         if x.get("availMB") is not None), default=None),
+                         "cpuSomeAvg": avg("cpuSome"), "memorySomeAvg": avg("memorySome"),
+                         "memoryFullAvg": avg("memoryFull"), "gpuBusyAvg": avg("gpuBusy")}
     return out
 
 

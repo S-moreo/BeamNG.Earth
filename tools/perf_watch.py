@@ -91,6 +91,25 @@ def report(rows, out):
     lines += ["## Load", f"- game: CPU {gc[0]:.0f} % average, {gc[1]:.0f} % peak (100 % = one core); memory up to {gm[1]:.0f} MB",
               f"- server (with its workers): CPU {sc[0]:.0f} % average, {sc[1]:.0f} % peak; memory up to {sm[1]:.0f} MB "
               "(summed over its processes: shared pages count more than once)"]
+    sw = [r["procs"].get(k, {}).get("swapMB") or 0 for r in rows if r.get("procs") for k in ("game",)]
+    ssw = [r["procs"].get("server", {}).get("swapMB") or 0 for r in rows if r.get("procs")]
+    sysr = [r["procs"]["system"] for r in rows if (r.get("procs") or {}).get("system")]
+    if sysr:
+        def mean(k):
+            v = [x[k] for x in sysr if x.get(k) is not None]
+            return sum(v) / len(v) if v else 0
+        swap = max((x.get("swapMB") or 0) for x in sysr)
+        lines.append(f"- machine: swap up to {swap} MB (game {max(sw or [0])} MB, server {max(ssw or [0])} MB of it), "
+                     f"memory free down to {min((x.get('availMB') or 0) for x in sysr)} MB; stalls waiting for "
+                     f"memory {mean('memorySome'):.1f} % of the time (all tasks: {mean('memoryFull'):.1f} %), "
+                     f"for a CPU {mean('cpuSome'):.1f} %")
+        if any(x.get("gpuBusy") is not None for x in sysr):
+            g = mean("gpuBusy")
+            lines.append(f"- GPU busy {g:.0f} % on average: " + ("GPU-bound" if g >= 90 else
+                         "the frames wait on the CPU side (the game's main / physics threads or the system)"))
+        if swap > 2048 or mean("memoryFull") > 1:
+            lines.append("- **the machine is swapping**: frame times and the collision rebuilds suffer from it "
+                         "(page faults on swapped-out memory); the server's worker processes are the usual cause")
     bl = [r.get("backlog") for r in rows if r.get("backlog") is not None]
     if bl:
         lines.append(f"- server backlog: {sum(bl) / len(bl):.0f} average, {max(bl)} peak")

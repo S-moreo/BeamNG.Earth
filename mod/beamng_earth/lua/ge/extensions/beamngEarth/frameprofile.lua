@@ -94,6 +94,17 @@ function M.add(ms, marks, metrics, observedAtMs)
   metrics = metrics or M.capture()
   serial, at, count = serial + 1, at % M.KEEP + 1, math.min(count + 1, M.KEEP)
   local cpu, cpuSum = copyTimings(metrics.cpu)
+  -- the frame pacer's sleep (framepacer.lua) is inside LuaPre: shown as its own row, not as Lua work
+  local okP, pacer = pcall(require, 'beamngEarth/framepacer')
+  local paced = okP and pacer.takeSlept and number(pacer.takeSlept()) or 0
+  if paced > 0 and M.mode == 'full' and next(cpu) then
+    local inLua = math.min(paced, cpu.LuaPre or 0)
+    if inLua > 0 then
+      cpu.LuaPre = cpu.LuaPre - inLua
+      if cpu.LuaPre <= 0 then cpu.LuaPre = nil end
+      cpu.FramePacer = inLua
+    end
+  end
   local gpu, gpuSum = copyTimings(metrics.gpu)
   local mod, modSum = copyTimings(M.mode == 'full' and marks or {})
   -- Never scale reported timings to fit the wall interval. An overrun stays visible.
@@ -102,7 +113,7 @@ function M.add(ms, marks, metrics, observedAtMs)
   local gpuMs = number(metrics.gpuMs)
   if next(gpu) and gpuMs and gpuMs - gpuSum > 0.01 then gpu['Unattributed GPU'] = gpuMs - gpuSum end
   frames[at] = { id = serial, ms = ms, observedAtMs = number(observedAtMs), cpu = cpu, gpu = gpu, mod = mod, cpuSumMs = cpuSum, gpuSumMs = gpuSum,
-    modMs = modSum, cpuMs = number(metrics.cpuMs), gpuMs = gpuMs, waitMs = number(metrics.waitMs),
+    modMs = modSum, cpuMs = number(metrics.cpuMs), gpuMs = gpuMs, waitMs = number(metrics.waitMs), paceMs = paced,
     focused = metrics.focused, gpuTiming = metrics.gpuTiming,
     phaseOverrun = cpuSum > ms * 1.1 + 0.5, gpuOverrun = gpuMs and gpuSum > gpuMs * 1.1 + 0.5 or false }
 end
