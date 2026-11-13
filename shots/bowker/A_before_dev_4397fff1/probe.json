@@ -1,0 +1,947 @@
+[
+ {
+  "col": [
+   {
+    "name": "",
+    "z": 4.0848655700684,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.9992208480835,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": {},
+  "vis": [
+   {
+    "name": "",
+    "z": 4.0848655700684,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.9992208480835,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": 4.0848655700684,
+  "colup": {},
+  "id": "3cd5f587",
+  "lat": 42.350751,
+  "lon": -71.092896,
+  "sign": 3.2,
+  "road_z": 4.0848655700684,
+  "top_deck_z": null,
+  "lowest_underside_z": null,
+  "clearance": null
+ },
+ {
+  "col": [
+   {
+    "name": "",
+    "z": 5.1730718612671,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99884730577469,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 5.0563578605652,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99983024597168,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 1.5953466892242,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99989902973175,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0052013397216797,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": [
+   {
+    "nz": -0.99884724617004,
+    "cls": "TSStatic",
+    "z": 4.2730822563171,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "nz": -0.99884730577469,
+    "cls": "TSStatic",
+    "z": 4.6821713447571,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "vis": [
+   {
+    "name": "",
+    "z": 5.1730718612671,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99884730577469,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 5.0563578605652,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99983024597168,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 1.5953466892242,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99989902973175,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0052013397216797,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": 1.5953464508057,
+  "colup": [
+   {
+    "nz": -0.99884724617004,
+    "cls": "TSStatic",
+    "z": 4.2730822563171,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "nz": -0.99884730577469,
+    "cls": "TSStatic",
+    "z": 4.6821713447571,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "id": "60dcf877",
+  "lat": 42.351409,
+  "lon": -71.093084,
+  "sign": 3.35,
+  "road_z": 1.5953466892242,
+  "top_deck_z": 5.1730718612671,
+  "lowest_underside_z": 4.2730822563171,
+  "clearance": 2.6777355670928995
+ },
+ {
+  "col": [
+   {
+    "name": "",
+    "z": 3.6960637569427,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99686616659164,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 1.4394860267639,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99913907051086,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0057387351989746,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": [
+   {
+    "nz": -0.99501746892929,
+    "cls": "TSStatic",
+    "z": 2.799663066864,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "nz": -0.99686616659164,
+    "cls": "TSStatic",
+    "z": 3.2051360607147,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "vis": [
+   {
+    "name": "",
+    "z": 3.7060861587524,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00530.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99678808450699,
+    "what": "road-surface mesh [TSStatic rs_3_g17_39651_48483_road.cdae]"
+   },
+   {
+    "name": "",
+    "z": 1.4394854307175,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99913907051086,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0057388544082642,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": 1.4394855499268,
+  "colup": [
+   {
+    "nz": -0.99501746892929,
+    "cls": "TSStatic",
+    "z": 2.799663066864,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "nz": -0.99686616659164,
+    "cls": "TSStatic",
+    "z": 3.2051360607147,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "id": "60dcf877",
+  "lat": 42.351405,
+  "lon": -71.092872,
+  "sign": 3.2,
+  "road_z": 1.4394855499268,
+  "top_deck_z": 3.7060861587524,
+  "lowest_underside_z": 2.799663066864,
+  "clearance": 1.3601775169372
+ },
+ {
+  "col": [
+   {
+    "name": "",
+    "z": 7.5945672988892,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00317.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99816286563873,
+    "what": "deck mesh [TSStatic rg_g17_39652_48484_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 7.5295009613037,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00317.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99826383590698,
+    "what": "deck mesh [TSStatic rg_g17_39652_48484_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 2.427597284317,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99987614154816,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": [
+   {
+    "nz": -0.99744349718094,
+    "cls": "TSStatic",
+    "z": 6.6296248435974,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00317.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39652_48484_deck.cdae]"
+   },
+   {
+    "nz": -0.99826383590698,
+    "cls": "TSStatic",
+    "z": 7.038592338562,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00317.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39652_48484_deck.cdae]"
+   },
+   {
+    "nz": -0.99816286563873,
+    "cls": "TSStatic",
+    "z": 7.1036639213562,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00317.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39652_48484_deck.cdae]"
+   }
+  ],
+  "vis": [
+   {
+    "name": "",
+    "z": 7.5945672988892,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00317.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99816286563873,
+    "what": "deck mesh [TSStatic rg_g17_39652_48484_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 7.5395755767822,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00310.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99778336286545,
+    "what": "road-surface mesh [TSStatic rs_3_g17_39652_48484_road.cdae]"
+   },
+   {
+    "name": "",
+    "z": 2.427597284317,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99987614154816,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": 2.4275970458984,
+  "colup": [
+   {
+    "nz": -0.99744349718094,
+    "cls": "TSStatic",
+    "z": 6.6296248435974,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00317.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39652_48484_deck.cdae]"
+   },
+   {
+    "nz": -0.99826383590698,
+    "cls": "TSStatic",
+    "z": 7.038592338562,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00317.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39652_48484_deck.cdae]"
+   },
+   {
+    "nz": -0.99816286563873,
+    "cls": "TSStatic",
+    "z": 7.1036639213562,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00317.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39652_48484_deck.cdae]"
+   }
+  ],
+  "id": "64dc338c",
+  "lat": 42.350357,
+  "lon": -71.092158,
+  "sign": 3.2,
+  "road_z": 2.427597284317,
+  "top_deck_z": 7.5945672988892,
+  "lowest_underside_z": 6.6296248435974,
+  "clearance": 4.202027559280399
+ },
+ {
+  "col": [
+   {
+    "name": "",
+    "z": 5.0763921737671,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99788862466812,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 5.0197858810425,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99983024597168,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 1.6012017726898,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99995040893555,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0052241086959839,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": [
+   {
+    "nz": -0.99788862466812,
+    "cls": "TSStatic",
+    "z": 4.5854845046997,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "vis": [
+   {
+    "name": "",
+    "z": 5.0763921737671,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99788862466812,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 5.0197858810425,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99983024597168,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 1.6012017726898,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99995040893555,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0052241086959839,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": 1.6012020111084,
+  "colup": [
+   {
+    "nz": -0.99788862466812,
+    "cls": "TSStatic",
+    "z": 4.5854845046997,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "id": "7927d8ea",
+  "lat": 42.35142,
+  "lon": -71.09306,
+  "sign": 3.35,
+  "road_z": 1.6012020111084,
+  "top_deck_z": 5.0763921737671,
+  "lowest_underside_z": 4.5854845046997,
+  "clearance": 2.9842824935912997
+ },
+ {
+  "col": [
+   {
+    "name": "",
+    "z": 3.1681294441223,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.9991962313652,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 1.2989419698715,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99823474884033,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0059190988540649,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": [
+   {
+    "nz": -0.9991962313652,
+    "cls": "TSStatic",
+    "z": 2.6772203445435,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "vis": [
+   {
+    "name": "",
+    "z": 3.1800796985626,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00530.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99917727708817,
+    "what": "road-surface mesh [TSStatic rs_3_g17_39651_48483_road.cdae]"
+   },
+   {
+    "name": "",
+    "z": 1.2989426851273,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99823474884033,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0059188604354858,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": 1.298942565918,
+  "colup": [
+   {
+    "nz": -0.9991962313652,
+    "cls": "TSStatic",
+    "z": 2.6772203445435,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "id": "7927d8ea",
+  "lat": 42.351434,
+  "lon": -71.09276,
+  "sign": 3.2,
+  "road_z": 1.2989426851273,
+  "top_deck_z": 3.1800796985626,
+  "lowest_underside_z": 2.6772203445435,
+  "clearance": 1.3782776594162
+ },
+ {
+  "col": [
+   {
+    "name": "",
+    "z": 3.2829837799072,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99998092651367,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0076613426208496,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": [
+   {
+    "nz": -0.99837309122086,
+    "cls": "TSStatic",
+    "z": 5.7134580612183,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00810.cdae",
+    "what": "far-LOD bridge (brfar) [TSStatic bb_g15_9913_12120_g17_39652_48483.cdae]"
+   }
+  ],
+  "vis": [
+   {
+    "name": "",
+    "z": 7.9119472503662,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00810.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99837321043015,
+    "what": "far-LOD bridge (brfar) [TSStatic bb_g15_9913_12120_g17_39652_48483.cdae]"
+   },
+   {
+    "name": "",
+    "z": 3.2896313667297,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00810.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99800056219101,
+    "what": "far-LOD bridge (brfar) [TSStatic bb_g15_9913_12120_g17_39652_48483.cdae]"
+   },
+   {
+    "name": "",
+    "z": -0.0076611042022705,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": 3.2829856872559,
+  "colup": {},
+  "id": "7927d8ea",
+  "lat": 42.351311,
+  "lon": -71.092221,
+  "sign": 3.2,
+  "road_z": 3.2896313667297,
+  "top_deck_z": 7.9119472503662,
+  "lowest_underside_z": 5.7134580612183,
+  "clearance": 2.4238266944886
+ },
+ {
+  "col": [
+   {
+    "name": "",
+    "z": 4.9052901268005,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99755698442459,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 2.6240200996399,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99760925769806,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.02066707611084,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": [
+   {
+    "nz": -0.99727308750153,
+    "cls": "TSStatic",
+    "z": 4.0044069290161,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "nz": -0.99755698442459,
+    "cls": "TSStatic",
+    "z": 4.4143781661987,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "vis": [
+   {
+    "name": "",
+    "z": 4.9152398109436,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00530.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99754071235657,
+    "what": "road-surface mesh [TSStatic rs_3_g17_39651_48483_road.cdae]"
+   },
+   {
+    "name": "",
+    "z": 2.6240205764771,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99760925769806,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.020667314529419,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": 2.6240196228027,
+  "colup": [
+   {
+    "nz": -0.99727308750153,
+    "cls": "TSStatic",
+    "z": 4.0044069290161,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "nz": -0.99755698442459,
+    "cls": "TSStatic",
+    "z": 4.4143781661987,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "id": "80110548",
+  "lat": 42.350987,
+  "lon": -71.093184,
+  "sign": 3.35,
+  "road_z": 2.6240205764771,
+  "top_deck_z": 4.9152398109436,
+  "lowest_underside_z": 4.0044069290161,
+  "clearance": 1.3803863525389999
+ },
+ {
+  "col": [
+   {
+    "name": "",
+    "z": 2.551685333252,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.999675989151,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0084543228149414,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": [
+   {
+    "nz": -0.99782001972198,
+    "cls": "TSStatic",
+    "z": 4.4593830108643,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00810.cdae",
+    "what": "far-LOD bridge (brfar) [TSStatic bb_g15_9913_12120_g17_39652_48483.cdae]"
+   },
+   {
+    "nz": -0.99983191490173,
+    "cls": "TSStatic",
+    "z": 5.3778600692749,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00810.cdae",
+    "what": "far-LOD bridge (brfar) [TSStatic bb_g15_9913_12120_g17_39652_48483.cdae]"
+   }
+  ],
+  "vis": [
+   {
+    "name": "",
+    "z": 7.5776057243347,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00810.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99982786178589,
+    "what": "far-LOD bridge (brfar) [TSStatic bb_g15_9913_12120_g17_39652_48483.cdae]"
+   },
+   {
+    "name": "",
+    "z": 6.6572456359863,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00810.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99782019853592,
+    "what": "far-LOD bridge (brfar) [TSStatic bb_g15_9913_12120_g17_39652_48483.cdae]"
+   },
+   {
+    "name": "",
+    "z": 2.5814371109009,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00323.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99992847442627,
+    "what": "road-surface mesh [TSStatic rs_3_g17_39652_48483_road.cdae]"
+   },
+   {
+    "name": "",
+    "z": -0.0084540843963623,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": 2.5516872406006,
+  "colup": {},
+  "id": "80110548",
+  "lat": 42.351151,
+  "lon": -71.092116,
+  "sign": 3.2,
+  "road_z": 2.5814371109009,
+  "top_deck_z": 7.5776057243347,
+  "lowest_underside_z": 4.4593830108643,
+  "clearance": 1.8779458999633998
+ },
+ {
+  "col": [
+   {
+    "name": "",
+    "z": -0.0097732543945312,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.9990382194519,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": [
+   {
+    "nz": -0.99949008226395,
+    "cls": "TSStatic",
+    "z": 2.3080506324768,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00810.cdae",
+    "what": "far-LOD bridge (brfar) [TSStatic bb_g15_9913_12120_g17_39652_48483.cdae]"
+   }
+  ],
+  "vis": [
+   {
+    "name": "",
+    "z": 4.5097308158875,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00323.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99969285726547,
+    "what": "road-surface mesh [TSStatic rs_3_g17_39652_48483_road.cdae]"
+   },
+   {
+    "name": "",
+    "z": -0.0097768306732178,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.9990382194519,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": -0.0097770690917969,
+  "colup": {},
+  "id": "8a3a284c",
+  "lat": 42.351457,
+  "lon": -71.089788,
+  "sign": 3.66,
+  "road_z": -0.0097768306732178,
+  "top_deck_z": 4.5097308158875,
+  "lowest_underside_z": 2.3080506324768,
+  "clearance": 2.3178274631500178
+ },
+ {
+  "col": [
+   {
+    "name": "",
+    "z": 8.2852077484131,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99995446205139,
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   },
+   {
+    "name": "",
+    "z": 3.2810485363007,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.9990382194519,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": [
+   {
+    "nz": -0.99995446205139,
+    "cls": "TSStatic",
+    "z": 7.7942991256714,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "vis": [
+   {
+    "name": "",
+    "z": 8.295093536377,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00530.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99994748830795,
+    "what": "road-surface mesh [TSStatic rs_3_g17_39651_48483_road.cdae]"
+   },
+   {
+    "name": "",
+    "z": 3.2810468673706,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.9990382194519,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": 3.2810478210449,
+  "colup": [
+   {
+    "nz": -0.99995446205139,
+    "cls": "TSStatic",
+    "z": 7.7942991256714,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00476.cdae",
+    "what": "deck mesh [TSStatic rg_g17_39651_48483_deck.cdae]"
+   }
+  ],
+  "id": "c657c3d8",
+  "lat": 42.35063,
+  "lon": -71.092971,
+  "sign": 3.35,
+  "road_z": 3.2810478210449,
+  "top_deck_z": 8.295093536377,
+  "lowest_underside_z": 7.7942991256714,
+  "clearance": 4.5132513046265
+ },
+ {
+  "col": [
+   {
+    "name": "",
+    "z": 0.64645957946777,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99999237060547,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0042634010314941,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "visup": [
+   {
+    "nz": -0.99909055233002,
+    "cls": "TSStatic",
+    "z": 3.6084015369415,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00810.cdae",
+    "what": "far-LOD bridge (brfar) [TSStatic bb_g15_9913_12120_g17_39652_48483.cdae]"
+   }
+  ],
+  "vis": [
+   {
+    "name": "",
+    "z": 5.8228902816772,
+    "shape": "/temp/beamngEarth/20261113-133248-1aaa/slot_00323.cdae",
+    "cls": "TSStatic",
+    "nz": 0.99908047914505,
+    "what": "road-surface mesh [TSStatic rs_3_g17_39652_48483_road.cdae]"
+   },
+   {
+    "name": "",
+    "z": 0.64646100997925,
+    "shape": "",
+    "cls": "?",
+    "nz": 0.99999237060547,
+    "what": "terrain/ground"
+   },
+   {
+    "name": "",
+    "z": -0.0042633414268494,
+    "shape": "",
+    "cls": "?",
+    "nz": 1,
+    "what": "terrain/ground"
+   }
+  ],
+  "terrain": 0.64646148681641,
+  "colup": {},
+  "id": "e9749529",
+  "lat": 42.351985,
+  "lon": -71.090047,
+  "sign": 3.66,
+  "road_z": 0.64646148681641,
+  "top_deck_z": 5.8228902816772,
+  "lowest_underside_z": 3.6084015369415,
+  "clearance": 2.96194005012509
+ }
+]
