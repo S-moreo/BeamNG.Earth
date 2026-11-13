@@ -7473,14 +7473,8 @@ def fill_abutment(z, at_end, step=PROFILE_STEP):
 
 def _limit_at(limits, pt):
     """m: the lowest height limit [(xy (k, 2), m)] holding at pt (a limit's polyline passing within LIMIT_NEAR_M), or
-    None."""
-    best = None
-    pt = np.asarray(pt, np.float64)[None, :2]
-    for xy, h in limits:
-        if len(xy) >= 2 and (best is None or h < best) and \
-                float(roadsmod._seg_dist(pt, xy[:-1, :2], xy[1:, :2]).min()) <= LIMIT_NEAR_M:
-            best = h
-    return best
+    None (roads.limit_at)."""
+    return roadsmod.limit_at(limits, pt, LIMIT_NEAR_M)
 
 
 def underpass_offsets(lines, requirements, queries=None):

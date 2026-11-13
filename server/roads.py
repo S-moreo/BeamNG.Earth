@@ -7639,13 +7639,23 @@ class BridgeProfiles:
         for k, lines in roads_:
             if k not in ground:
                 ground[k] = lines
-        if ROAD_SIGNED_ON:
-            lims = self.__dict__.setdefault("limits", {})
-            if str(key) not in lims:
-                lims[str(key)] = self._cell_limits(key)
+        if ROAD_SIGNED_ON and self.READS_LIMITS:
+            # (with the cell's ground roads, so a chain reads the limits of exactly the cells it loaded, whichever
+            # other cells this process's threads had loaded before: _limits_near)
+            ground[("lim", str(key))] = self._cell_limits(key)
 
     def _cell_limits(self, key):
-        """[(xy (k, 2) ENU, m)]: the height limits (height_limit_lines) of cell key's roads."""
+        """[(xy (k, 2) ENU, m)]: the height limits (height_limit_lines) of cell key's roads, made once per cell."""
+        memo = self.__dict__.setdefault("_limits_memo", {})
+        with self.lock:
+            got = memo.get(str(key))
+        if got is not None:
+            return got
+        out = self._read_limits(key)
+        with self.lock:
+            return memo.setdefault(str(key), out)
+
+    def _read_limits(self, key):
         feats = self.cell_fn(key)
         out = []
         if feats is None or not len(feats) or getattr(feats, "rules", None) is None:
@@ -7655,9 +7665,10 @@ class BridgeProfiles:
             out.append((np.stack([np.asarray(e, np.float64), np.asarray(n, np.float64)], axis=1), h))
         return out
 
-    def _limits_near(self, lines):
-        """The height limits of the loaded cells (_cell_limits) whose box comes within LIMIT_NEAR_M of lines'."""
-        lims = [x for v in self.__dict__.get("limits", {}).values() for x in v]
+    @staticmethod
+    def _limits_near(lines, ground):
+        """The height limits of the cells loaded into ground (_load) whose box comes within LIMIT_NEAR_M of lines'."""
+        lims = [x for k in sorted(k for k in ground if k[0] == "lim") for x in ground[k]]
         if not lims or not lines:
             return []
         allp = np.concatenate([np.asarray(ln, np.float64)[:, :2] for ln in lines])
@@ -7727,6 +7738,7 @@ class BridgeProfiles:
             return cache[str(key)]
 
     END_JOINS = True        # (TunnelProfiles: none)
+    READS_LIMITS = True     # the height limits of the roads under (road_sign_at; TunnelProfiles: none)
 
     def _end_joins_of(self, lines, halves, ground):
         """_end_joins of deck lines with the ground roads of ground ({(fid, "g"): lines}); [] for tunnels."""
@@ -7832,7 +7844,7 @@ class BridgeProfiles:
             nav = 0.0
         depth = self._depth(lines) if bridge_profile_mode() == "curve" else None
         # (a road under with a height limit: that limit under the girders, its own clearance: road_sign_at)
-        lims = self._limits_near(lines) if ROAD_SIGNED_ON and cr else []
+        lims = self._limits_near(lines, ground) if ROAD_SIGNED_ON and cr else []
         signs = [road_sign_at(lims, c[2]) for c in cr] if lims else [None] * len(cr)
         required = [(c[0], c[1], z) if h is None else (c[0], c[1], z, signed_road_clear(h, depth))
                     for c, z, h in zip(cr, road_z, signs)]
@@ -8498,6 +8510,7 @@ class TunnelProfiles(BridgeProfiles):
     keys_of = staticmethod(lambda feats, i: part_keys(feats, i, "tunnel"))
     levels_of = staticmethod(lambda feats, i: [-1.0] * len(tunnel_parts(feats, i)))
     END_JOINS = False
+    READS_LIMITS = False                        # (no clearance over a road to hold)
 
     def _structure(self, chain):                # (no truss over a tunnel)
         return [], []
