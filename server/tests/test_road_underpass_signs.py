@@ -103,5 +103,16 @@ class BridgeLiftsTest(unittest.TestCase):
                          [lf for _e, lf in grading.bridge_lifts(deck, [deck], ground, z, limits=[])])
 
 
+class CorridorUnderDeckTest(unittest.TestCase):
+    def test_a_raise_under_a_deck_is_found(self):
+        xy = np.c_[np.linspace(-50, 50, 26), np.zeros(26)]
+        deck = [(np.array([[0.0, -40.0], [0.0, 40.0]]), 6.0)]
+        dz = np.where(np.abs(xy[:, 0]) < 10, 3.0, 0.0)
+        self.assertTrue(grading._raised_under(xy, dz, deck))
+        self.assertFalse(grading._raised_under(xy, dz * 0.2, deck))     # (a small raise: the corridors as before)
+        far = np.where(np.abs(xy[:, 0] - 40) < 5, 3.0, 0.0)             # (raised beside, not under it)
+        self.assertFalse(grading._raised_under(xy, far, deck))
+
+
 if __name__ == "__main__":
     unittest.main()

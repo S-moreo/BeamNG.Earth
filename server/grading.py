@@ -103,6 +103,12 @@ CORRIDOR_MIN_RH = 2.4       # m: a carriageway at least this wide (half): no pat
 CORRIDOR_WREQ = 10.0        # the spline's weight where a correction is asked ...
 CORRIDOR_W0 = 0.01          # ... and elsewhere (pulling back to the plan as made) ...
 CORRIDOR_LAM = 50000.0      # ... against its curvature: eased over ~(LAM / W0) ** 0.25 ~ 47 m
+# A road where it passes under a deck is on another level than a road beside it there (the ramp up to that deck, a
+# road on its embankment): one corridors would raise more than this under a deck keeps its own heights (the Bowker
+# Overpass, Boston: a Storrow Drive ramp under it was raised 3.1 m to the ramp beside it once the deck's abutments rose
+# less for its maxheight signs, its 3.35 m sign left with no headroom, 2026-11-13). BNE_CORRIDOR_UNDER=off: as before.
+CORRIDOR_UNDER_ON = os.environ.get("BNE_CORRIDOR_UNDER", "on") != "off"
+CORRIDOR_UNDER_RAISE_M = 1.0
 CORRIDOR_THROUGH = 1000     # added to a through road's key (not a slip road): two through roads side by side
                             # (a dual carriageway's halves on a hillside, BR-381's) each keep their own height
 DIP_HOLDS = os.environ.get("BNE_DIP_HOLDS", "off") == "on"   # (a dipped road held over every other: _corridor_key)
@@ -2796,7 +2802,7 @@ class _Planner:
                     log.debug("grading: grade guard of %s: %s: %s", key, type(e).__name__, e)
             if CORRIDOR_ON and plans:
                 try:            # roads side by side at one height (before the welds and snaps that join them again)
-                    share_corridors(plans, pspecs)
+                    share_corridors(plans, pspecs, self._decks_near(key) if CORRIDOR_UNDER_ON else ())
                 except Exception as e:      # each on its own rather than no grading
                     _caught(e)
                     log.debug("grading: corridors of %s: %s: %s", key, type(e).__name__, e)
@@ -7820,7 +7826,7 @@ def _wall_vertices(p):
     return out
 
 
-def share_corridors(plans, specs):
+def share_corridors(plans, specs, decks=()):
     """Roads whose carriageways touch or overlap side by side agree in height there: the difference left between two is
     what their gap holds at CORRIDOR_BANK, none where the pavements overlap. A through road holds over a slip road (a
     dipped one's dip carried onto the ramp beside it; DIP_HOLDS: a dipped road over every other), a higher grade_rank
@@ -7829,7 +7835,9 @@ def share_corridors(plans, specs):
     spline, its ends and its bridge ends held (native/earthfast corridor.rs). Two branches leaving a fork at a few degrees each
     climbed or fell on their own while their pavements still overlapped, and the blend gave the overlap to one: a
     0.4-0.8 m ramp across the lanes within 3 m (GitHub #1043 Wesley Chapel, #1045 Findlay's diverging diamond). plans
-    [(fid, Plan)] in place; specs: their Specs. Returns how many changed."""
+    [(fid, Plan)] in place; specs: their Specs; decks [(line (k, 2), half width)]: a plan the corridors would raise
+    more than CORRIDOR_UNDER_RAISE_M where it passes under one keeps its heights (CORRIDOR_UNDER_ON). Returns how many
+    changed."""
     if not plans:
         return 0
     import fast
@@ -7848,9 +7856,29 @@ def share_corridors(plans, specs):
                                                 float(CORRIDOR_WREQ), float(CORRIDOR_W0), float(CORRIDOR_LAM),
                                                 CORRIDOR_THROUGH)
     idx = np.flatnonzero(changed).tolist()
+    if CORRIDOR_UNDER_ON and decks and idx:
+        idx = [i for i in idx if not _raised_under(ps[i].xy, zn[off[i]:off[i + 1]] - ps[i].z, decks)]
     for i in idx:
         plans[i] = (plans[i][0], _replan(ps[i], ps[i].xy, zn[off[i]:off[i + 1]].copy(), cut=True))
     return len(idx)
+
+
+def _raised_under(xy, dz, decks):
+    """Is a plan (vertices xy (n, 2)) raised by dz (n,) more than CORRIDOR_UNDER_RAISE_M at a vertex inside a deck's
+    footprint (its line, half width)? Pure."""
+    xy = np.asarray(xy, np.float64)[:, :2]
+    up = np.asarray(dz, np.float64) > CORRIDOR_UNDER_RAISE_M
+    if not up.any():
+        return False
+    pts = xy[up]
+    lo, hi = pts.min(0), pts.max(0)
+    for line, half in decks:
+        b = np.asarray(line, np.float64)[:, :2]
+        if len(b) < 2 or half <= 0 or (b.max(0) < lo - half).any() or (b.min(0) > hi + half).any():
+            continue
+        if float(roadsmod._seg_dist(pts, b[:-1], b[1:]).min()) <= float(half):
+            return True
+    return False
 
 
 def weld_continuations(plans, specs=None):
