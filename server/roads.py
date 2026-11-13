@@ -4894,7 +4894,7 @@ def deck_profile_once(lines, ground_fn, crossings=(), clear=None, grade=None, li
         d = _dijkstra(adj, {a: sc, b: s[-1] - sc})
         # a junction at grade (Queens Plaza, the user's report #55, 2026-10-17: a ramp's map line starts in the
         # intersection it climbs from; its deck rose 0.8 m over the cross street there, a hump across it)
-        flat = (ci < n_road and len(cr) == 3 and float(np.interp(sc, s, dab[pi])) <= AT_GRADE_REACH_M
+        flat = (ci < n_road and _road_crossing(cr) and float(np.interp(sc, s, dab[pi])) <= AT_GRADE_REACH_M
                 and float(np.interp(sc, s, cap[pi])) < zc + AT_GRADE_M)
         for k, (ea, eb, es) in enumerate(edges):
             dk = np.minimum(d[ea] + es, d[eb] + (es[-1] - es))
@@ -4905,7 +4905,7 @@ def deck_profile_once(lines, ground_fn, crossings=(), clear=None, grade=None, li
             elif min_lv is None or levels[k] >= min_lv:
                 # A lower road has width: keep a level clearance corridor around its
                 # centreline instead of reaching the target at just one point.
-                reach = DECK_CLEAR_REACH_M if len(cr) == 3 or cr[3] is None else 0.0
+                reach = DECK_CLEAR_REACH_M if _road_crossing(cr) else 0.0
                 req[k] = np.maximum(req[k], zc + cl - grade * np.maximum(dk - reach, 0.0))
                 if k == pi:
                     # A crossing can lie between mesh vertices. Both bracketing vertices
@@ -5209,8 +5209,8 @@ def _path_curve(lines, order, ground_fn, crossings, spans, clear, lift, max_grad
     junction = np.full(len(s), np.inf)
     for cr in crossings:
         k, arc, zc = cr[:3]
-        own = len(cr) > 3 and cr[3] is not None
-        cl = cr[3] if own else clear
+        own = not _road_crossing(cr)
+        cl = cr[3] if len(cr) > 3 and cr[3] is not None else clear
         if k in info:
             sc = to_s(k, arc)
             # a road by an abutment the deck cannot get AT_GRADE_M over is a junction at grade (the intersection a
@@ -7211,6 +7211,56 @@ def deck_road_clear(depth=None):
     return MIN_BRIDGE_HEADROOM_M + BRIDGE_HEADROOM_MARGIN_M + (DECK_FULL_DEPTH if depth is None else float(depth))
 
 
+# A road with a height limit under a road bridge (a maxheight sign: the roads layer's "max_height_m" rule) needs the
+# limit itself under the deck's girders, SIGN_MARGIN_M over it, not MIN_BRIDGE_HEADROOM_M's guess: a 4.2 m sign under a
+# town overpass no longer digs the street or lifts the deck for 6 m, and a 7 m one gets its 7 m (the rail decks' rule,
+# grading.RAIL_SIGNED_ON, for road decks; after yahms's PR #922). Limits outside [SIGN_MIN_M, SIGN_MAX_M] are taken
+# for mapping errors and left out. BNE_ROAD_SIGNED_UNDER=off: the limit is not read under road decks.
+ROAD_SIGNED_ON = os.environ.get("BNE_ROAD_SIGNED_UNDER", "on") != "off"
+SIGN_MARGIN_M = 0.25
+SIGN_MIN_M = 2.0
+SIGN_MAX_M = 8.0
+LIMIT_NEAR_M = 4.0      # m: a limit's range holds where a road crosses under a deck when it passes this near
+
+
+def limit_at(limits, pt, near=LIMIT_NEAR_M):
+    """m: the lowest height limit [(xy (k, 2) ENU, m)] holding at pt (a limit's polyline passing within near m), or
+    None. Pure."""
+    best = None
+    pt = np.asarray(pt, np.float64)[None, :2]
+    for xy, h in limits:
+        if len(xy) >= 2 and (best is None or h < best) and \
+                float(_seg_dist(pt, xy[:-1, :2], xy[1:, :2]).min()) <= near:
+            best = h
+    return best
+
+
+def road_sign_at(limits, pt):
+    """m: the height limit a road deck honours at pt (limit_at within [SIGN_MIN_M, SIGN_MAX_M]), or None. Pure."""
+    if not ROAD_SIGNED_ON or not limits:
+        return None
+    h = limit_at(limits, pt)
+    return h if h is not None and SIGN_MIN_M <= h <= SIGN_MAX_M else None
+
+
+class RoadClear(float):
+    """A road crossing's own clearance (deck_profile's 4th crossing element) that is still a road's: the junction at
+    grade by an abutment and the DECK_CLEAR_REACH_M corridor hold for it as for a plain (part, arc, z) road. Other
+    own clearances (railways, water) have neither."""
+    __slots__ = ()
+
+
+def _road_crossing(cr):
+    """Is deck crossing cr a road's (no own clearance, or a RoadClear)?"""
+    return len(cr) == 3 or cr[3] is None or isinstance(cr[3], RoadClear)
+
+
+def signed_road_clear(sign, depth=None):
+    """RoadClear: m a deck's road stands over a road under it with a height limit of sign m: the limit, SIGN_MARGIN_M
+    and the deck's depth (deck_road_clear with the sign for MIN_BRIDGE_HEADROOM_M + its margin). Pure."""
+    return RoadClear(float(sign) + SIGN_MARGIN_M + (DECK_FULL_DEPTH if depth is None else float(depth)))
+
+
 def geom_span(lines):
     """m: a bridge chain's main span from its geometry alone: its longest part, or (one longer than 1.5 PIER_SPAN_M)
     that part's pier spacing (pier_sites' PIER_SPAN_M grid). Pure."""
@@ -7558,6 +7608,30 @@ class BridgeProfiles:
         for k, lines in roads_:
             if k not in ground:
                 ground[k] = lines
+        if ROAD_SIGNED_ON:
+            lims = self.__dict__.setdefault("limits", {})
+            if str(key) not in lims:
+                lims[str(key)] = self._cell_limits(key)
+
+    def _cell_limits(self, key):
+        """[(xy (k, 2) ENU, m)]: the height limits (height_limit_lines) of cell key's roads."""
+        feats = self.cell_fn(key)
+        out = []
+        if feats is None or not len(feats) or getattr(feats, "rules", None) is None:
+            return out
+        for ring, h in height_limit_lines(feats):
+            e, n = mapgeom.enu_xy(feats, self.frame, ring)
+            out.append((np.stack([np.asarray(e, np.float64), np.asarray(n, np.float64)], axis=1), h))
+        return out
+
+    def _limits_near(self, lines):
+        """The height limits of the loaded cells (_cell_limits) whose box comes within LIMIT_NEAR_M of lines'."""
+        lims = [x for v in self.__dict__.get("limits", {}).values() for x in v]
+        if not lims or not lines:
+            return []
+        allp = np.concatenate([np.asarray(ln, np.float64)[:, :2] for ln in lines])
+        lo, hi = allp.min(0) - LIMIT_NEAR_M, allp.max(0) + LIMIT_NEAR_M
+        return [(xy, h) for xy, h in lims if (xy.max(0) >= lo).all() and (xy.min(0) <= hi).all()]
 
     def _cell_entries(self, key):
         """([((fid, j), (spec, deck line, lon, level, ring points))], [((fid, "g"), [ground lines])]) of cell key, made
@@ -7716,8 +7790,12 @@ class BridgeProfiles:
         except Exception as ex:             # the share-of-span rule alone
             log.debug("nav clearance: %s: %s", type(ex).__name__, ex)
             nav = 0.0
-        required = [(c[0], c[1], z) for c, z in zip(cr, road_z)]
         depth = self._depth(lines) if bridge_profile_mode() == "curve" else None
+        # (a road under with a height limit: that limit under the girders, its own clearance: road_sign_at)
+        lims = self._limits_near(lines) if ROAD_SIGNED_ON and cr else []
+        signs = [road_sign_at(lims, c[2]) for c in cr] if lims else [None] * len(cr)
+        required = [(c[0], c[1], z) if h is None else (c[0], c[1], z, signed_road_clear(h, depth))
+                    for c, z, h in zip(cr, road_z, signs)]
         dd = self.__dict__.setdefault("depth", {})
         for k in comp:
             dd[k] = DECK_FULL_DEPTH if depth is None else depth
@@ -7760,7 +7838,7 @@ class BridgeProfiles:
                     z = np.where((np.abs(xy[:, 0] - px) < 1e-6) & (np.abs(xy[:, 1] - py) < 1e-6), zt, z)
                 return z
             zs = solve(ground_on)
-        deficits = _clearance_deficits(lines, zs, required + [r[:3] for r in rails], depth)
+        deficits = _clearance_deficits(lines, zs, [r[:3] for r in required + rails], depth)
         if deficits:
             # (debug: a city has hundreds of such bridges, each solved again in every process and tile; as a warning it
             # filled players' consoles, GitHub #391, TGForever Discord 2026-10-28)

@@ -3684,7 +3684,8 @@ class _Planner:
             for c in cr:
                 bi, arc_b, pt = c[0], c[1], np.asarray(c[2], f64)
                 b, L, fixed, rail = spans[bi]
-                sign = _limit_at(limits, pt) if rail and limits else None
+                sign = (_limit_at(limits, pt) if RAIL_SIGNED_ON else None) if rail and limits else None
+                road_sign = None if rail else roadsmod.road_sign_at(limits, pt)
                 mc = RAIL_MIN_CROSS_M if sign is not None else APPROACH_MIN_CROSS_M
                 if L < 2 * mc:
                     continue                    # (a short rail deck: a span only over a road with a height limit)
@@ -3728,6 +3729,8 @@ class _Planner:
                 if sign is not None:            # (a rail deck over a road with a height limit: that, not the guess)
                     clear = depth + sign + RAIL_SIGN_MARGIN_M + ROAD_LIFT
                     signed.add(len(cands))
+                elif road_sign is not None:     # (a road deck over one: the same, roads.signed_road_clear)
+                    clear = float(roadsmod.signed_road_clear(road_sign, depth)) + ROAD_LIFT
                 cands.append((i, float(s[j] + t[j] * (s[j + 1] - s[j])), deck - clear))
                 decks.append((deck, fixed))
                 cand_xs.append((bi, pt))
@@ -4758,7 +4761,7 @@ class _Planner:
                 out_.append(rxy[k0:k0 + len(ring)])
                 k0 += len(ring)
         limits = []
-        if f is not None and len(f) and ground and RAIL_SIGNED_ON:
+        if f is not None and len(f) and ground and (RAIL_SIGNED_ON or roadsmod.ROAD_SIGNED_ON):
             hl = roadsmod.height_limit_lines(f)
             if hl:
                 allh = np.concatenate([r for r, _h in hl])
@@ -5549,6 +5552,8 @@ class _Planner:
         # (the tracks near it: crossed under like a road, never an approach or a road beside the ramp)
         rails = [c["rail_ground"][n_] for c in cs for n_ in
                  np.flatnonzero(_boxes_meet(c["rail_ground_box"], lo_b, hi_b)).tolist()]
+        # (the height limits of the roads under it: a road deck honours a maxheight sign, roads.road_sign_at)
+        limits = [x for c in cs for x in c.get("height_limits", ())] if roadsmod.ROAD_SIGNED_ON else []
 
         def z_at(p):
             la_, lo_, _ = self.frame.enu_to_geodetic(p[:, 0], p[:, 1], 0.0)
@@ -5591,7 +5596,8 @@ class _Planner:
             bi = hc["end_of"][int(hit[0])]
             half_b = float((hc.get("bridge_half") or [JR_TRUSTED_HALF_M] * len(hc["bridges"]))[bi])
             lt = [lf for end, lf in bridge_lifts(bridge, bridges, ground, z_at, chain, rails,
-                                                 under_z=self._under_trusted(ground, half_b, z_at))
+                                                 under_z=self._under_trusted(ground, half_b, z_at),
+                                                 limits=limits)
                   if dnp.hypot(*(end - xy)) <= APPROACH_TOUCH_M]
             jr_here = bool(lt) and float(lt[0]) >= JUNCTION_MIN_LIFT
             if not jr_here:
@@ -5640,7 +5646,8 @@ class _Planner:
             bi = hc["end_of"][int(hit[0])]
             hs = hc.get("bridge_half") or ()
             bhalf = float(hs[bi]) if bi < len(hs) and hs[bi] > 0 else 4.0
-        for end, lift in bridge_lifts(bridge, bridges, ground, z_at, chain, rails, half=bhalf):
+        for end, lift in bridge_lifts(bridge, bridges, ground, z_at, chain, rails, half=bhalf,
+                                      limits=limits):
             if dnp.hypot(*(end - xy)) <= APPROACH_TOUCH_M:
                 best = lift
                 break
@@ -6778,7 +6785,8 @@ def ground_under_deck(deck, half, crossings, z_at):
     return np.minimum(out, z[:, mid])
 
 
-def bridge_lifts(line, all_bridges, ground_lines, z_at, chain=None, rail_lines=(), under_z=None, half=None):
+def bridge_lifts(line, all_bridges, ground_lines, z_at, chain=None, rail_lines=(), under_z=None, half=None,
+                 limits=()):
     """[(end xy (2,), lift m)] of a bridge part (line (k, 2) ENU m): at each of its ends that no other bridge part
     continues from (an abutment), how far the ground there must be raised for the deck to clear every road crossing
     under it (roads.DECK_ROAD_CLEAR + APPROACH_MARGIN_M over the road, full height within APPROACH_FLAT_M of the end,
@@ -6787,7 +6795,9 @@ def bridge_lifts(line, all_bridges, ground_lines, z_at, chain=None, rail_lines=(
     never meets a road deck at grade: the deck ended 3 m past one at Vitebsk, GitHub #324). z_at(xy (n, 2)) -> ground
     m; under_z(xy (n, 2)) -> m, when given: the heights of the roads under at their crossings instead of z_at there
     (_Planner._under_trusted). half: the deck's half width, the road under's ground then read beside the deck
-    (ground_under_deck) where under_z is not given; None: on the crossing itself. Pure given z_at and under_z."""
+    (ground_under_deck) where under_z is not given; None: on the crossing itself. limits: the height limits [(xy (k, 2),
+    m)] of the roads (roads.road_sign_at): a road under with one asks its limit under the girders (roads.signed_road_clear)
+    instead. Pure given z_at and under_z."""
     zu_at = z_at if under_z is None else under_z
     line = np.asarray(line, np.float64)[:, :2]
     if len(line) < 2:
@@ -6891,8 +6901,14 @@ def bridge_lifts(line, all_bridges, ground_lines, z_at, chain=None, rail_lines=(
         if not far.any():
             continue
         d, zu_e = d[far], zu[far]
-        need = zu_e + roadsmod.deck_road_clear(roadsmod.deck_depth(roadsmod.geom_span([line] + list(chain or ()))))             + APPROACH_MARGIN_M \
-            - roadsmod.DECK_GRADE * np.maximum(d - APPROACH_FLAT_M, 0.0)
+        depth = roadsmod.deck_depth(roadsmod.geom_span([line] + list(chain or ())))
+        clear = np.full(len(zu_e), roadsmod.deck_road_clear(depth))
+        if limits:
+            for n, (p, r) in enumerate(zip(pts[far], rail[far])):
+                h = None if r else roadsmod.road_sign_at(limits, p)
+                if h is not None:
+                    clear[n] = float(roadsmod.signed_road_clear(h, depth))
+        need = zu_e + clear + APPROACH_MARGIN_M - roadsmod.DECK_GRADE * np.maximum(d - APPROACH_FLAT_M, 0.0)
         lift = float(need.max() - z_at(end[None])[0])
         if lift >= APPROACH_MIN_LIFT:
             out.append((np.asarray(end, np.float64), min(lift, APPROACH_MAX_LIFT)))
