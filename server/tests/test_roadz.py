@@ -6,6 +6,7 @@ import struct
 import sys
 import time
 import unittest
+from unittest import mock
 
 import numpy as np
 
@@ -518,6 +519,37 @@ class BridgeOverrideTest(unittest.TestCase):
         np.testing.assert_allclose(out[0], z, atol=1e-9, err_msg="under the upper deck: the solve")
         out2 = bp._observed([beside], pool, [line + [0.0, 40.0]], [z])
         self.assertGreater(float(np.median(out2[0])), FLAT + 5.0, "a deck beside it: measured (off its solve, FLAT + 4)")
+
+    def test_deck_measured_on_the_road_under_it_refused(self):
+        # the lidar took the road under a deck for the deck: 1.4 m under the girders over Storrow Drive at the Bowker
+        # Overpass (Boston, 2026-11-13); the solve stands there instead. A real deck high enough keeps its measurement
+        import types
+        bp = roads.BridgeProfiles(FRAME, lambda key: None, flat_elev)
+        line = np.c_[np.linspace(0.0, 200.0, 51), np.zeros(51)]
+        k = ("bowker", 0)
+        pool = {k: (types.SimpleNamespace(width=12.0), line, 0.0, 1.0, 51, "")}
+        z = np.full(51, FLAT + 8.0)
+        req = [(0, 100.0, FLAT)]
+        roadz.PROVIDER = StubProvider(lambda xy_, s: np.full(len(xy_), FLAT + 4.0))
+        out = bp._observed([k], pool, [line], [z], required=req)
+        np.testing.assert_allclose(out[0], z, atol=1e-9, err_msg="measured too low over the road: the solve")
+        roadz.PROVIDER = StubProvider(lambda xy_, s: np.full(len(xy_), FLAT + 7.0))
+        out = bp._observed([k], pool, [line], [z], required=req)
+        self.assertLess(float(np.median(out[0])), FLAT + 7.5, "high enough: measured")
+        with mock.patch.object(roads, "OBS_CLEAR_ON", False):
+            roadz.PROVIDER = StubProvider(lambda xy_, s: np.full(len(xy_), FLAT + 4.0))
+            out = bp._observed([k], pool, [line], [z], required=req)
+            self.assertLess(float(np.min(out[0])), FLAT + 4.5, "switched off: measured as before")
+
+    def test_measured_too_low_uses_the_sign(self):
+        line = np.c_[np.linspace(0.0, 200.0, 51), np.zeros(51)]
+        z = np.full(51, FLAT + 9.0)
+        o = np.full(51, FLAT + 5.0)
+        d = roads.DECK_FULL_DEPTH
+        self.assertIsNone(roads._measured_too_low(line, o + d, z + d, [(0, 100.0, FLAT)], d))     # 5 m: plenty
+        bad = roads._measured_too_low(line, o + d, z + d, [(0, 100.0, FLAT, roads.signed_road_clear(5.5, d))], d)
+        self.assertAlmostEqual(bad, 5.0)                                                          # under a 5.5 m sign
+        self.assertIsNone(roads._measured_too_low(line, o + d, z + d, [(0, 5.0, FLAT)], d))      # at an abutment
 
     def test_short_deck_spike_refused(self):
         # a deck of three points (4.4 m: a culvert's bridge) measured 5 m over its ends in the middle keeps the solve:
