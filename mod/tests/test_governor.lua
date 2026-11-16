@@ -497,4 +497,19 @@ do
   T.check(n == 2, 'a unit that ran counts nothing')
   T.check(g:snapshot().est ~= nil, 'the per-kind estimates in the snapshot')
 end
+-- the fast pace (the setting "World loading while driving"): the driving target and the frame cap raised, the loading
+-- and cover ones as they were, and all of it back with the pace off
+do
+  local g = governor.new()
+  T.check(g:targetNow() == 2.0 and g:frameCap() == governor.FRAME_CAP_MS, 'smooth: 2 ms under the 33 ms cap')
+  g:setPace(true)
+  T.check(g:targetNow() == governor.FAST_TARGET_MS and g:frameCap() == governor.FAST_FRAME_CAP_MS,
+    'fast: ' .. governor.FAST_TARGET_MS .. ' ms under the ' .. governor.FAST_FRAME_CAP_MS .. ' ms cap')
+  g:setLoading(true)
+  T.check(g:targetNow() == governor.FAST_TARGET_MS, 'fast while loading: never under the driving target')
+  g:setCover(true)
+  T.check(g:frameCap() == governor.COVER_FRAME_MS and g:targetNow() == g:coverTarget(), 'fast: the cover as before')
+  g:setCover(false); g:setLoading(false); g:setPace(false)
+  T.check(g:targetNow() == 2.0 and g:frameCap() == governor.FRAME_CAP_MS, 'smooth again')
+end
 T.done('test_governor')

@@ -3580,6 +3580,12 @@ function M.setFarBudget(ms)
   return gov:setTarget(ms)
 end
 
+-- The setting "World loading while driving": 'fast' takes the world in sooner at the frame rate's cost (governor.lua
+-- setPace), 'smooth' as before.
+function M.setLoadingPace(v)
+  gov:setPace(v == 'fast')
+end
+
 -- The connected server's hello (its version and options; nil before one arrived), for the reports.
 function M.serverHello()
   if not lastHello then return nil end

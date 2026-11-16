@@ -87,6 +87,13 @@ M.FAR_CAP_MS = 20.0
 --    lanes spent lately (laneUse, decayed LANE_DECAY a frame): the meshes round the car first, then the distant land
 --    and the rest of the town side by side instead of the land after every building of the place.
 M.FRAME_CAP_MS = 33.0
+-- The fast pace (Gov:setPace, the setting "World loading while driving": Fast): for a player who would rather have the
+-- world in than the frame rate held. Manhattan's avenues at 150 mph, a cold cache, 2026-11-15: the server had the road
+-- tiles built and the mod took them in at 2 ms a frame, the car with under 300 m of road ahead in 43 % of the polls;
+-- at 12 ms a frame under a 60 ms cap 16 %, the median road ahead 352 -> 704 m, for 42.9 -> 38.7 fps and no more frames
+-- over 100 ms (tools/nyc_speed.py --route uptown --speeds 150, one run each).
+M.FAST_TARGET_MS = 12.0
+M.FAST_FRAME_CAP_MS = 60.0
 M.COVER_FRAME_MS = 42.0
 M.COVER_TARGET_MS = 30.0
 M.DEF_ALPHA = 0.1          -- engine share EMA gain (per frame that ran units of the kind)
@@ -201,6 +208,9 @@ end
 
 function Gov:setLoading(on) self.loading = on and true or false end
 
+-- The fast pace (FAST_TARGET_MS, FAST_FRAME_CAP_MS): the driving budget and frame cap raised.
+function Gov:setPace(fast) self.fast = fast and true or false end
+
 -- The far cap (FAR_CAP_MS): nil or 0 turns it off.
 function Gov:setFarCap(ms)
   ms = tonumber(ms)
@@ -219,7 +229,8 @@ end
 
 function Gov:targetNow()
   if self.cover then return self:coverTarget() end
-  local t = self.loading and M.LOADING_TARGET_MS or self.target
+  local t = self.fast and max(self.target, M.FAST_TARGET_MS) or self.target
+  if self.loading then t = max(t, M.LOADING_TARGET_MS) end
   if self:isDue() then t = max(t, M.DUE_TARGET_MS) end
   return t
 end
@@ -239,7 +250,10 @@ function Gov:reserve(kind)
 end
 
 -- The frame cap in force (ms of wall time a frame plans streaming up to).
-function Gov:frameCap() return self.cover and M.COVER_FRAME_MS or M.FRAME_CAP_MS end
+function Gov:frameCap()
+  if self.cover then return M.COVER_FRAME_MS end
+  return self.fast and M.FAST_FRAME_CAP_MS or M.FRAME_CAP_MS
+end
 
 -- A unit's planned cost: its Lua estimate plus its learned engine share.
 function Gov:cost(kind) return (self.est[kind] or 1) + (self.def[kind] or 0) end
