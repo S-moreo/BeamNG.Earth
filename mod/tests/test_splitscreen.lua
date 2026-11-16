@@ -311,5 +311,33 @@ N.onTeleport()
 T.check(activeAmount == 0, 'traffic can be held before the first graph is applied')
 applyGraph(5)
 T.check(activeAmount == 2 and second:getActive(), 'the first graph also restores held ordinary AI')
+
+-- Issue #1343: the game no longer lists a car as AI once a player has driven it. Leaving it must not put that parked car
+-- in the pool (it could be hidden), but once it is made AI traffic again it must be pooled: stock respawns it as a
+-- pooled car, and crossCycle on a car missing from the pool ended in forceTeleport(nil) every frame.
+slots[7] = ai.id
+switched(second.id, ai.id, 7)
+T.check(pool.allVehs[ai.id] == nil, '#1343: the entered AI car is out of the pool')
+data[ai.id], aiIds = { isAi = false, enableRespawn = true }, { ai2.id }   -- the game: now the player's car
+slots[7] = second.id
+switched(ai.id, second.id, 7)
+T.check(pool.allVehs[ai.id] == nil and ai:getActive(), '#1343: left as a non-AI car: not pooled, still shown')
+switched(nil, second.id, 7)
+T.check(pool.allVehs[ai.id] == nil, '#1343: still not AI: still not pooled')
+data[ai.id], aiIds = aiData(), { ai.id, ai2.id }    -- AI traffic again, its pool entry not restored (insertTraffic)
+switched(nil, second.id, 7)
+T.check(pool.allVehs[ai.id] ~= nil, '#1343: AI again: back in its pool')
+-- a car taken out of traffic meanwhile is forgotten, not pooled when traffic takes it again by its own rules
+slots[7] = ai2.id
+switched(second.id, ai2.id, 7)
+data[ai2.id], aiIds = { isAi = false, enableRespawn = true }, { ai.id }
+slots[7] = second.id
+switched(ai2.id, second.id, 7)
+data[ai2.id] = nil
+switched(nil, second.id, 7)
+data[ai2.id], aiIds = aiData(), { ai.id, ai2.id }
+switched(nil, second.id, 7)
+T.check(pool.allVehs[ai2.id] == nil, '#1343: removed from traffic in between: forgotten')
+pool:insertVeh(ai2.id)
 N.reset()
 T.done('test_splitscreen')

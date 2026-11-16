@@ -829,6 +829,11 @@ end
 -- deactivate that car, and reactivating it can invoke stock forceTeleport before our filtered scatter. Protect only
 -- the occupied AI cars, and return each to its original pool and respawn policy when its last local occupant leaves.
 local protectedTraffic, aiTraffic = {}, {}
+-- id -> the pool: a car released while it was no longer AI traffic (issue #1343: the player's car in the game's eyes
+-- after they leave it) stays out of the pool, not put back as a parked car the pool could hide. If it is made AI traffic
+-- again with its pool entry gone, stock respawns it as a pooled car, crossCycle fails and forceTeleport(nil) throws
+-- every frame; the next sync puts such a car back in its pool once it is AI again and nobody is in it.
+local unpooledTraffic = {}
 local function trafficPool()
   local pools = rawget(_G, 'core_vehicleActivePooling')
   local pool = pools and pools.getPool and pools.getPool('autoTraffic')
@@ -841,10 +846,26 @@ local function releaseTraffic(id, saved, pool, data, force)
     if t.enableRespawn == false then t.enableRespawn = saved.enableRespawn end
     if t.ignoreForceTeleport == true then t.ignoreForceTeleport = saved.ignoreForceTeleport end
   end
-  if saved.pool == pool and pool and aiTraffic[id] and getObjectByID(id) and pool.allVehs[id] == nil then
-    pool:insertVeh(id, force)
+  if saved.pool == pool and pool and getObjectByID(id) and pool.allVehs[id] == nil then
+    if aiTraffic[id] then pool:insertVeh(id, force) elseif data[id] ~= nil then unpooledTraffic[id] = pool end
   end
   protectedTraffic[id] = nil
+end
+
+-- unpooledTraffic's cars back in their pool once AI again (stock's own insertTraffic would have pooled it, had the car
+-- still been in the pool's books when it left); forgotten once gone from traffic, pooled by someone else, or the pool
+-- replaced (traffic restarted).
+local function repoolTraffic(pool, data)
+  for id, p in pairs(unpooledTraffic) do
+    local o, t = getObjectByID(id), data[id]
+    if p ~= pool or not o or type(t) ~= 'table' or pool.allVehs[id] ~= nil then
+      unpooledTraffic[id] = nil
+    elseif t.isAi and t.enableAutoPooling ~= false and not protectedTraffic[id]
+        and not localplayers.controlled(id, o, controlled) then
+      pool:insertVeh(id, false)
+      unpooledTraffic[id] = nil
+    end
+  end
 end
 
 -- A false return means the pool cannot safely be put on hold; the post-graph guard still recycles the AI.
@@ -865,6 +886,7 @@ syncTrafficPool = function(gt)
       releaseTraffic(id, saved, pool, data, false)
     end
   end
+  if next(unpooledTraffic) ~= nil then repoolTraffic(pool, data) end
   local safe = type(list) == 'table'
   for id in pairs(aiTraffic) do
     local o, t = getObjectByID(id), data[id]
@@ -1484,6 +1506,7 @@ function M.reset()
       protectedTraffic[id] = nil
     end
   end
+  for id in pairs(unpooledTraffic) do unpooledTraffic[id] = nil end    -- (the level's pool goes with it)
   heads = {}            -- (the level took them with it)
   graph, applied, dirty, lastApply, persistent, ours, foreign = nil, nil, false, -math.huge, nil, false, false
   started, respawnAll, lastGuard, heldActive = false, false, -math.huge, nil
