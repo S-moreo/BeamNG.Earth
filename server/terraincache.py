@@ -10,7 +10,8 @@ The key, from the 0.39.4 binary (the function formatting "art/terrainMaterialCac
 constants are XXH64's, seed 0) and checked against a cache miss in the game's log: XXH64 of the four
 source paths of the packed texture, concatenated. The base-colour texture packs RGB from baseColorBaseTex
 and A from aoBaseTex, so its key is xxh64(base + base + base + ao) (paths exactly as the material's fields,
-VFS form), printed as 16 hex digits; the files on disk are lower case.
+VFS form), printed as 16 hex digits; the server writes them lower case (the game, through Wine, upper case: either
+is found, cache_dir).
 
 The same rule keys every packed texture (2026-11-14, 36 of the game's own files matched): a slot's colour is
 xxh64(colour * 3 + ao), its pack xxh64(roughness + height + normal + normal); terrainprefill.py writes those of every
@@ -85,8 +86,30 @@ def base_key(base_vfs, ao_vfs):
     return f"{xxh64((base_vfs * 3 + ao_vfs).encode()):016x}"
 
 
+CACHE_NAME = "terrainMaterialCache"     # the engine's own spelling ("art/terrainMaterialCache/%s.png")
+
+
 def cache_dir(user_dir):
-    return os.path.join(user_dir, "temp", "art", "terrainmaterialcache")
+    """The game's terrain texture cache folder. On a case-sensitive file system (Linux) the folder the game already
+    made is the one it reads, whatever its case: under Proton the game made terrainMaterialCache while the server
+    wrote terrainmaterialcache, so every prefilled pack was missed and packed again on the game's main thread
+    (issue #1330: 650-785 ms at nearly every block swap). The engine's spelling first (Wine opens an exact match
+    before it looks case-insensitively), then any other spelling found, else the lower-case folder of before (Wine
+    and Windows find it whatever the case the game asks for). The key's file names stay lower case: Wine and
+    Windows match them case-insensitively too. One stat when the engine's folder exists."""
+    art = os.path.join(user_dir, "temp", "art")
+    exact = os.path.join(art, CACHE_NAME)
+    if os.path.isdir(exact):
+        return exact
+    want = CACHE_NAME.lower()
+    try:
+        with os.scandir(art) as it:
+            for e in it:
+                if e.name.lower() == want and e.is_dir():
+                    return e.path
+    except OSError:
+        pass
+    return os.path.join(art, want)
 
 
 def stored_png(rgb):
