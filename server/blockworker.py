@@ -322,12 +322,18 @@ def _memattr_loop(every_s, extra_roots=None, exclude=()):
                         deep += [(f"{name}.{k}", x) for k, x in list(d.items())]
                     else:
                         deep.append((name, v))
+                # (never from an executor, a thread or a lock: they reach their owner back through their workers'
+                # targets, so "dem.pool" read as everything the Dem holds and "server.trash_thread" as 0.8 GB of the
+                # server's, megachonk 2026-11-15; those roots last, what only they reach still shows)
+                import concurrent.futures
+                back = (concurrent.futures.Executor, threading.Thread, threading.local)
                 roots = deep
                 for mname, mod in list(sys.modules.items()):
                     if (getattr(mod, "__file__", "") or "").startswith(here):
                         roots += [(f"{mname}.{k}", v) for k, v in list(vars(mod).items())
                                   if isinstance(v, (dict, list, set, collections.OrderedDict)) and v]
                 t0 = time.perf_counter()
+                roots = [r for r in roots if not isinstance(r[1], back)] + [r for r in roots if isinstance(r[1], back)]
                 got = held_memory(roots, exclude=exclude)
                 log.info("memory pid %d: %.0f MB (%.0f private, %s); held arrays: %s (%.1f s)", os.getpid(),
                          budget.memory_mb() or 0, budget.memory_mb(private=True) or 0, _mallinfo(),
