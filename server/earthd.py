@@ -12455,7 +12455,8 @@ async def main_async(args, restart=None):
                         "server", server.root)
     server.photo_pool = photo_pool
     # the whole server held to its RAM limit (memwatch.py: caches dropped, a pool's processes replaced)
-    memwatchmod.register(*[p for p, _q in block_pools], photo_pool, far_pool, road_pool, far_bld_pool)
+    # (the late pool too: its processes build road geotiles all session and were never replaced)
+    memwatchmod.register(*[p for p, _q in block_pools], photo_pool, far_pool, road_pool, far_bld_pool, late_pool)
     memwatchmod.start()
     server.boost_cpus = (cpupin.boosted(server.server_cpus, server.game_cpus)
                          if getattr(args, "load_boost", "on") == "on" else None)
