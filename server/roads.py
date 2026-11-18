@@ -2231,14 +2231,15 @@ def parking_width(spec):
     return assumed_parking(spec) if street is None else 2. * street.parking
 
 
-def edge_margin(spec, side=None):
+def edge_margin(spec, side=None, width=None):
     """Shoulder/edge-strip metres. side is +1 left or -1 right of the geometry.
 
     One-way highways retain the earlier 1.5 m left / 4.5 m right shoulders;
     ramps use .875 / 2.625 m. No side requests their mean for lane_layout.
+    width: a highway's drawn width (m, or per point where it tapers) its shoulders take instead of its spec's.
     """
     if highway_shoulders(spec):
-        base = motorway_shoulder(spec)
+        base = motorway_shoulder(spec, width)
         factor = 1. if side is None or not spec.oneway else .5 if side == (spec.dir or 1) else 1.5
         return base * factor
     if (spec.urban or spec.kind not in BUILT or spec.cls == "service" or spec.mountain
@@ -2247,17 +2248,21 @@ def edge_margin(spec, side=None):
     return EDGE_STRIP_CLASS_M.get(spec.cls, EDGE_STRIP_M)
 
 
-def driving_offset(spec):
-    """Signed offset of the travel lanes from the pavement's geometric centre."""
-    return (edge_margin(spec, -1) - edge_margin(spec, 1)) / 2
+def driving_offset(spec, width=None):
+    """Signed offset of the travel lanes from the pavement's geometric centre (width: as edge_margin's)."""
+    return (edge_margin(spec, -1, width) - edge_margin(spec, 1, width)) / 2
 
 
-def motorway_shoulder(spec):
-    """Mean shoulder outside the mapped travel lanes, bounded by the configured width."""
+def motorway_shoulder(spec, width=None):
+    """Mean shoulder outside the mapped travel lanes, bounded by the configured width. width: the drawn width (m, or
+    an array of them) in place of spec.width: where a highway tapers into a deck of another width its shoulders are
+    the deck's at the joint, so the lines of both meet there."""
     lane = LINK_LANE_M if spec.link else LANE_W.get(spec.cls, LANE_W_DEFAULT)
     count = spec.lanes or (1 if spec.link and spec.oneway else 2)
     cap = LINK_SHOULDER_M if spec.link else SHOULDER_WIDE_M if count >= SHOULDER_WIDE_LANES else SHOULDER_M
-    return float(np.clip((spec.width - count * lane) / 2, 0., cap))
+    if width is not None and np.ndim(width):
+        return np.clip((np.asarray(width, np.float64) - count * lane) / 2, 0., cap)
+    return float(np.clip(((spec.width if width is None else width) - count * lane) / 2, 0., cap))
 
 
 
@@ -6727,8 +6732,13 @@ def extras(spec, pts, lon, left_hand=False, country=None, osm=None, ws=None, shi
     # the driving width (a town street's parking lanes and a rural road's edge strips left out: three lanes on every
     # rural Interstate, GitHub #43) and its lanes (OpenStreetMap's count where known)
     drive, lanes = lane_layout(spec)
-    # (tapered: the lanes' lines spread with the driving width)
-    scale = 1.0 if ws is None else np.maximum(drive + (wv - w), 0.5) / max(drive, 0.5)
+    # (tapered: the lanes' lines spread with the driving width; a highway's shoulders are its drawn width's, as its
+    # deck's are at the deck's width: from the spec's width a 12 m motorway tapering into a 14 m deck kept 2 m
+    # shoulders, the deck had 3 m, and its edge lines stepped 1.5 m at the joint)
+    hw = ws is not None and highway_shoulders(spec)
+    off0 = driving_offset(spec, wv) if hw else driving_offset(spec)
+    scale = 1.0 if ws is None else np.maximum((wv - 2 * edge_margin(spec, None, wv)) if hw else drive + (wv - w),
+                                              0.5) / max(drive, 0.5)
     if not spec.oneway and spec.lanes and lanes >= 3 and lanes % 2:
         osm = {**(osm or {}), "lanes": lanes}    # keep odd mapped totals in the paint as well as the AI
     plan = markings.lane_plan(osm, not spec.oneway, drive, lanes, left_hand) \
@@ -6743,7 +6753,7 @@ def extras(spec, pts, lon, left_hand=False, country=None, osm=None, ws=None, shi
         d = (st.double_gap + lw_) / 2
 
         def at(off):
-            return offset_polyline(pts, driving_offset(spec) + off * scale)
+            return offset_polyline(pts, off0 + off * scale)
         for off, role, how in plan:
             if role == "centre" and barrier:
                 for sd in (1, -1):
@@ -6797,7 +6807,7 @@ def extras(spec, pts, lon, left_hand=False, country=None, osm=None, ws=None, shi
         if spec.oneway and lanes >= 2:
             lw = drive / lanes
             for k in range(1, lanes):
-                mark("lane", "line_white", lw_, offset_polyline(pts, driving_offset(spec) + (-drive / 2 + k * lw) * scale), pat)
+                mark("lane", "line_white", lw_, offset_polyline(pts, off0 + (-drive / 2 + k * lw) * scale), pat)
         elif not spec.oneway and lanes >= 4:
             n = lanes // 2
             lw = drive / 2 / n
@@ -6824,7 +6834,8 @@ def extras(spec, pts, lon, left_hand=False, country=None, osm=None, ws=None, shi
         # (VGU 2024 table 12.5, mötesfri väg: left 0.30 m, right 0.20 m: a 2+1 road's carriageway, by its one or two lanes)
         pair = sweden and spec.oneway and not motorway and not urban and (spec.lanes or 3) <= 2
         for side in (1, -1):
-            inset = max(EDGE_LINE["inset"], edge_margin(spec, side)) if highway_shoulders(spec) else EDGE_LINE["inset"]
+            inset = np.maximum(EDGE_LINE["inset"], edge_margin(spec, side, wv if hw else None)) \
+                if highway_shoulders(spec) else EDGE_LINE["inset"]
             mat = st.left_edge if (st.left_edge and spec.oneway and side == travel_left) else "line_white"
             mark("edge", mat, markings.MOTESFRI_EDGE_W if pair and side != travel_left else ew,
                  offset_polyline(pts, side * (wv / 2 - inset)), epat, side=side)

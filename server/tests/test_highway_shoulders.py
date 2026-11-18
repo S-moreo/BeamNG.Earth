@@ -63,6 +63,24 @@ class HighwayShouldersTest(unittest.TestCase):
                 self.assertAlmostEqual(node[1], direction*1.5, places=3)
                 self.assertGreaterEqual(node[2], 20.)
 
+    def test_lines_meet_a_deck_of_another_width(self):
+        # a highway tapering into a deck of another width (road_tapers: its width at the joint the deck's) has the
+        # deck's shoulders there, so its edge and lane lines go on into the deck's; from its own width a 12 m road
+        # into a 14 m deck kept 2 m shoulders against the deck's 3 m: its edge lines stepped 1.5 m, its lane line 0.5 m
+        pts = np.array([[0., 0., 0.], [50., 0., 0.], [100., 0., 0.]])
+        for direction in (1, -1):
+            for link, lanes, ground_w, deck_w in ((False, 2, 12., 14.), (False, 2, 14., 12.), (True, 1, 7.5, 9.)):
+                cls = 'motorway'
+                ground = roads.Spec(ground_w, 'paved', False, cls, True, dir=direction, lanes=lanes, link=link)
+                deck = ground._replace(width=deck_w)
+
+                def lines(sp, ws=None):
+                    return sorted((look['kind'], look.get('side'), round(float(p[-1, 1]), 4))       # (at the joint)
+                                  for look, w, p in roads.extras(sp, pts, -85., country='US', ws=ws)
+                                  if look.get('kind') in ('edge', 'lane') and p[-1, 0] > 99.)
+                self.assertEqual(lines(ground, np.array([ground_w, (ground_w + deck_w) / 2, deck_w])), lines(deck))
+                self.assertEqual(lines(ground, np.full(3, ground_w)), lines(ground))     # (untapered: as before)
+
 
 if __name__=='__main__':
     unittest.main()
