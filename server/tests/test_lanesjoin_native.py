@@ -45,6 +45,32 @@ def ref_project(line, points):
     return dist[np.arange(len(points)), k], delta[k] / length[k, None]
 
 
+def ref_cover(partial):
+    """The several-ways geometry match (earthfast 487, lanesjoin::cover_match): (way id at the middle sample, lanes) or
+    None. partial: (way id, lanes, distance (9,), alignment (9,)) of the candidates whose box holds a sample."""
+    lanes, used, total, mid = None, [], 0.0, None
+    for k in range(9):
+        best = None
+        for j, (wid, n, d, a) in enumerate(partial):
+            if d[k] <= 6. and a[k] >= .9 and (best is None or d[k] < best[0]):
+                best = (float(d[k]), j)
+        if best is None:
+            return None
+        n = partial[best[1]][1]
+        if any(m != n and d[k] <= 6. and a[k] >= .9 and d[k] < best[0] + 1. for _, m, d, a in partial):
+            return None
+        if lanes is not None and lanes != n:
+            return None
+        lanes, total = n, total + best[0]
+        if best[1] not in used:
+            used.append(best[1])
+        if k == 4:
+            mid = partial[best[1]][0]
+    if len(used) < 2 or total / 9. > 3.:
+        return None
+    return mid, lanes
+
+
 def ref_join(feats, tags, ids, geometry=None):
     count, _project = ref_count, ref_project
     n = len(feats)
@@ -106,20 +132,28 @@ def ref_join(feats, tags, ids, geometry=None):
         _, tangent = _project(line, samples)
         direction = rule(feats, "oneway", i)
         direction = 0 if direction is None else int(np.sign(direction))
-        matches = []
+        matches, partial = [], []
         for wid, lanes, cls, link, od, p, lo, hi in candidates:
-            if (cls != classes[i] or link != is_link(feats, i) or bool(od) != bool(direction)
-                    or np.any(samples < lo) or np.any(samples > hi)):
+            if cls != classes[i] or link != is_link(feats, i) or bool(od) != bool(direction):
+                continue
+            inside = ((samples >= lo) & (samples <= hi)).all(1)
+            if not inside.any():
                 continue
             distance, heading = _project(p, samples)
             alignment = (tangent * heading).sum(1)
             alignment = alignment * direction * od if direction else np.abs(alignment)
-            if distance.max() <= 6. and distance.mean() <= 3. and alignment.min() >= .9:
+            if inside.all() and distance.max() <= 6. and distance.mean() <= 3. and alignment.min() >= .9:
                 matches.append((float(distance.mean()), wid, lanes))
+            partial.append((wid, lanes, distance, alignment))
         matches.sort()
         if matches and not any(m[2] != matches[0][2] and m[0] < matches[0][0] + 1. for m in matches[1:]):
             _, matched[i], counts[i] = matches[0]
             sources[i] = "osm-geometry"
+        else:
+            got = ref_cover(partial)
+            if got is not None:
+                matched[i], counts[i] = got
+                sources[i] = "osm-geometry"
     feats.attrs["lane_count"] = counts
     feats.attrs["lane_source"] = np.array(sources, dtype="<U16")
     feats.attrs["lane_osm_way"] = matched
@@ -237,6 +271,11 @@ def case(rng):
                 q = q[::-1].copy()
             if rng.random() < 0.2:
                 q = q[:2].copy()
+            if len(q) >= 3 and rng.random() < 0.3:      # (the line in two ways: the several-ways match, cover_match)
+                k = rng.randrange(1, len(q) - 1)
+                w2 = rng.randrange(10 ** 6, 2 * 10 ** 6)
+                tags[w2] = {"lanes": rng.choice([2, 2, 3]), "lane_hw": rc, "_coords": q[k:].copy()}
+                q = q[:k + 1].copy()
             t = {"lanes": rng.choice([2, 3, 3, 4, None])}
             if t["lanes"] is None:
                 del t["lanes"]
@@ -356,6 +395,42 @@ class JoinParityTest(unittest.TestCase):
             self.assertEqual(outcome(roadlanes.join, copy_layer(f), t, i), ("raised", TypeError))
         q = {5: {"lanes": 2, "lane_hw": "motorway", "_coords": np.zeros((3, 2), np.float32)}}
         self.assertEqual(outcome(roadlanes.join, copy_layer(f), q, list(ids)), ("raised", TypeError))
+
+
+class SeveralWaysTest(unittest.TestCase):
+    """A highway segment longer than any one tagged way along it (I-70 by Washington PA, 2026-11-18: a ~600 m Overture
+    segment named one 250 m way, which the cells west of it left out of their tags, so they guessed 1 or 3 lanes): it
+    takes the count of the ways under it when they agree, none when they do not."""
+    LON0, LAT0 = -80.2672, 40.1782
+
+    def layer(self):
+        cosl = math.cos(math.radians(self.LAT0))
+        pts = [(self.LON0 + x / (M * cosl), self.LAT0) for x in (0., 150., 300., 450., 600.)]
+        f = mapgeom.Features("roads", np.array(["s0"]), np.full(1, mapgeom.LINE, np.uint8), np.array([0, 1], np.int64),
+                             np.array([0, 1], np.int64), np.array([0, 5], np.int64), np.array(pts, np.float64))
+        f.attrs["class"] = mapgeom.text_column(["motorway"])
+        return f, np.array(pts, np.float64)
+
+    def join(self, lanes_a, lanes_b, offset_m=1.0):
+        f, pts = self.layer()
+        q = pts + np.array([0., offset_m / 110574.0])
+        tags = {7: {"lanes": lanes_a, "lane_hw": "motorway", "_coords": q[:3].copy()},
+                8: {"lanes": lanes_b, "lane_hw": "motorway", "_coords": q[2:].copy()}}
+        roadlanes.join(f, tags, [99])             # (its own way, 99, not among the tags)
+        return f.attrs
+
+    def test_ways_that_agree_give_their_count(self):
+        a = self.join(2, 2)
+        self.assertEqual((float(a["lane_count"][0]), str(a["lane_source"][0]), int(a["lane_osm_way"][0])),
+                         (2.0, "osm-geometry", 7))
+
+    def test_ways_that_disagree_give_none(self):
+        a = self.join(2, 3)
+        self.assertTrue(np.isnan(a["lane_count"][0]))
+        self.assertEqual(str(a["lane_source"][0]), "")
+
+    def test_ways_too_far_give_none(self):
+        self.assertTrue(np.isnan(self.join(2, 2, offset_m=7.0)["lane_count"][0]))
 
 
 class VersionSkewTest(unittest.TestCase):

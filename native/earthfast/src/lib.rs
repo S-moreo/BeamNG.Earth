@@ -6693,6 +6693,8 @@ fn earthfast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(raildrawn::rail_drawn_cols, m)?)?;
     // 486: the full port's railways.drawn / wear (raildrawn::rail_drawn_cols: a layer's drawn class and wear per
     // feature in one pass, the glue reading the columns). 484 and 485 are other branches'
-    m.add("VERSION", 486)?;
+    // 487: lanes_join's several-ways geometry match (lanesjoin::cover_match: a highway along two or more tagged ways of
+    // one lane count takes that count where no one way runs its whole length)
+    m.add("VERSION", 487)?;
     Ok(())
 }

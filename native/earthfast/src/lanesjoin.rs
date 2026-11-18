@@ -321,6 +321,47 @@ fn project(line: &[P2], pts: &[P2]) -> (Vec<f64>, Vec<P2>) {
     (dist, head)
 }
 
+/// The geometry match by several ways (no one way runs along the whole road: an Overture segment of ~600 m on I-70 by
+/// Washington PA named one 250 m way, which its neighbouring cells' tags left out, so they guessed its lanes; the
+/// 2-lane ways under it were there): each of the 9 samples has its nearest way within 6 m and heading along (>= 0.9),
+/// no way of another count within 1 m of it, every one the same count, at least two ways, and the samples' mean distance
+/// at most 3 m (as one way's). (way id at the middle sample, lanes) or None. partial: (candidate, per sample distance,
+/// alignment) of the candidates of the road's class whose box holds a sample.
+fn cover_match<'a, 'py>(partial: &[(usize, Vec<f64>, Vec<f64>)], cands: &'a [Cand<'py>])
+                        -> Option<(&'a Bound<'py, PyAny>, i64)> {
+    let mut lanes: Option<i64> = None;
+    let mut used: Vec<usize> = Vec::new();
+    let (mut sum, mut mid) = (0.0f64, None);
+    for k in 0..9 {
+        let mut best: Option<(f64, usize)> = None;
+        for (c, d, a) in partial {
+            if d[k] <= 6.0 && a[k] >= 0.9 && best.map_or(true, |b| d[k] < b.0) {
+                best = Some((d[k], *c));
+            }
+        }
+        let (bd, bc) = best?;
+        let n = cands[bc].lanes;
+        if partial.iter().any(|(c, d, a)| cands[*c].lanes != n && d[k] <= 6.0 && a[k] >= 0.9 && d[k] < bd + 1.0) {
+            return None;                        // (another count as near: no match)
+        }
+        if lanes.map_or(false, |l| l != n) {
+            return None;
+        }
+        lanes = Some(n);
+        sum += bd;
+        if !used.contains(&bc) {
+            used.push(bc);
+        }
+        if k == 4 {
+            mid = Some(bc);
+        }
+    }
+    if used.len() < 2 || sum / 9.0 > 3.0 {
+        return None;
+    }
+    Some((&cands[mid?].wid, lanes?))
+}
+
 /// One tagged highway way a road can match (join's candidates, in the tags' order).
 struct Cand<'py> {
     wid: Bound<'py, PyAny>,
@@ -536,7 +577,9 @@ pub fn lanes_join<'py>(py: Python<'py>, attrs: Bound<'py, PyAny>, tags: Bound<'p
         let direction: i64 = direction_of.call1((i,))?.extract()?;
         let ctext = text_of(&c, &inp.np_str);
         let mut matches: Vec<(f64, Bound<'py, PyAny>, i64)> = Vec::new();
-        for cd in &cands {
+        // (the ways along part of the line: (candidate, distance and alignment per sample), for the cover below)
+        let mut partial: Vec<(usize, Vec<f64>, Vec<f64>)> = Vec::new();
+        for (ci_, cd) in cands.iter().enumerate() {
             let same_class = match &ctext {
                 Some(s) => s.to_str().map(|v| v == cd.cls).unwrap_or(false),
                 None => !PyString::new(py, &cd.cls).as_any().ne(&c)?,
@@ -544,7 +587,9 @@ pub fn lanes_join<'py>(py: Python<'py>, attrs: Bound<'py, PyAny>, tags: Bound<'p
             if !same_class || cd.link != is_link_of.call1((i,))?.is_truthy()? || (cd.dir != 0) != (direction != 0) {
                 continue;
             }
-            if samples.iter().any(|q| q[0] < cd.lo[0] || q[1] < cd.lo[1]) || samples.iter().any(|q| q[0] > cd.hi[0] || q[1] > cd.hi[1]) {
+            let inside = |q: &P2| q[0] >= cd.lo[0] && q[1] >= cd.lo[1] && q[0] <= cd.hi[0] && q[1] <= cd.hi[1];
+            let all_in = samples.iter().all(inside);
+            if !all_in && !samples.iter().any(inside) {
                 continue;
             }
             let (distance, heading) = project(&cd.pts, &samples);
@@ -552,10 +597,13 @@ pub fn lanes_join<'py>(py: Python<'py>, attrs: Bound<'py, PyAny>, tags: Bound<'p
                 let a = tangent[k][0] * heading[k][0] + tangent[k][1] * heading[k][1];
                 if direction != 0 { (a * direction as f64) * cd.dir as f64 } else { a.abs() }
             }).collect();
-            let mean = crate::levels::np_pairwise(&distance) / 9.0;
-            if np_max(distance.iter().copied()) <= 6.0 && mean <= 3.0 && np_min(align.iter().copied()) >= 0.9 {
-                matches.push((mean, cd.wid.clone(), cd.lanes));
+            if all_in {
+                let mean = crate::levels::np_pairwise(&distance) / 9.0;
+                if np_max(distance.iter().copied()) <= 6.0 && mean <= 3.0 && np_min(align.iter().copied()) >= 0.9 {
+                    matches.push((mean, cd.wid.clone(), cd.lanes));
+                }
             }
+            partial.push((ci_, distance, align));
         }
         // matches.sort(): (mean, way id, lanes) tuples (the means never NaN here, the way ids distinct)
         let mut err: Option<PyErr> = None;
@@ -582,6 +630,17 @@ pub fn lanes_join<'py>(py: Python<'py>, attrs: Bound<'py, PyAny>, tags: Bound<'p
                 cf[i] = best.2 as f64;
                 if ints {
                     ci[i] = best.2;
+                }
+                sources[i] = 2;
+            }
+        }
+        if sources[i] == 0 {
+            if let Some((w, lanes)) = cover_match(&partial, &cands) {
+                matched[i] = w.extract::<i64>().map_err(|_| pyo3::exceptions::PyOverflowError::new_err(
+                    "Python int too large to convert to C long"))?;
+                cf[i] = lanes as f64;
+                if ints {
+                    ci[i] = lanes;
                 }
                 sources[i] = 2;
             }

@@ -11,7 +11,7 @@ import fast
 
 HIGHWAYS = {"motorway", "trunk"}
 MAX_LANES = 12
-_ef_lanes = fast.native(456, "roadlanes")
+_ef_lanes = fast.native(487, "roadlanes")     # (487: the several-ways geometry match)
 
 
 def count(value, minimum=1):
