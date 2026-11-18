@@ -2253,3 +2253,25 @@ class GravelTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DualPairingTest(unittest.TestCase):
+    # I-70 at Washington PA (40.1837, -80.2590): a 44 m lane section of the westbound carriageway paired with its own
+    # section before it (end to end, 0.03 m "apart") instead of the eastbound one 23 m off, and capped to DUAL_MIN_W
+    LL = {"sib": [(-80.2580277, 40.184116), (-80.2581705, 40.1840759), (-80.2583902, 40.1840145),
+                  (-80.2584451, 40.1839992), (-80.2589836, 40.1838489)],
+          "tail": [(-80.2589836, 40.1838489), (-80.258984, 40.1838488), (-80.2594614, 40.1837054)],
+          "east": [(-80.2596836, 40.1834094), (-80.2595437, 40.183453), (-80.2593283, 40.1835196),
+                   (-80.2590591, 40.1836029), (-80.2589183, 40.1836455), (-80.2586885, 40.1837139),
+                   (-80.2584371, 40.1837873), (-80.2580461, 40.1838995)]}
+
+    def test_a_lane_section_is_not_paired_with_the_piece_before_it(self):
+        lon0, lat0 = -80.2588, 40.1838
+        lines = [[((lo - lon0) * M_LON, (la - lat0) * M_LAT) for lo, la in self.LL[k]] for k in ("sib", "tail", "east")]
+        f = features(lines, ["motorway"] * 3, subtypes=["road"] * 3)
+        f.attrs["name"] = np.array(["I-70"] * 3, dtype=object)
+        sp = [roads.Spec(14.0, "paved", False, "motorway", True, 2.5, 1, 100.0)] * 2 + \
+             [roads.Spec(18.0, "paved", False, "motorway", True, 2.5, 1, 100.0)]
+        got = roads.dual_carriageways(f, sp)
+        self.assertEqual(got[1].width, 14.0, "not squeezed to one lane")
+        self.assertGreater(got[1].median, roads.DUAL_GAP_M[0], "its twin is the eastbound carriageway")

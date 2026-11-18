@@ -844,6 +844,12 @@ fn dual(l: &Layer, rules: &RoadRules, prm: &Prm, specs: &mut [Option<Sp>], europ
                         continue;
                     }
                     let gap = centre_gap(view(ti), view(tj), prm.dual_gap1);
+                    // no twin nearer than DUAL_GAP_M[0]: a road's own next piece (a lane section ending where this
+                    // one starts) runs on from it, its points beside this one's end only (I-70 at Washington PA: a
+                    // 44 m section paired with the deck before it at 0.03 m, capped to DUAL_MIN_W)
+                    if gap < prm.dual_gap0 {
+                        continue;
+                    }
                     if best.is_none() || gap < best.unwrap().2 {
                         best = Some((side, j, gap));
                     }

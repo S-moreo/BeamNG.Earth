@@ -6699,6 +6699,7 @@ fn earthfast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(railspans::rail_underpass_distance, m)?)?;
     // 487: the full port's railways._span_underpasses / _clip / _underpass_masks / _underpass_distance (railspans: a
     // node window's parts over the road tunnels and cut to the window in one call)
-    m.add("VERSION", 487)?;
+    // 488: dual_carriageways takes no twin nearer than DUAL_GAP_M[0] (a lane section paired with the piece before it)
+    m.add("VERSION", 488)?;
     Ok(())
 }
