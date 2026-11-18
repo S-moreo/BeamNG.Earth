@@ -851,7 +851,8 @@ class MapData:
             if feats is None:
                 feats, sources = self.overture.query(layer, key, kind)
             if osm is not None:
-                feats = self._osm(feats, osm.result(), lambda need: self._osm_geometry(key, kind, need))
+                got = self._osm_from_neighbours(key, kind, feats, osm.result())
+                feats = self._osm(feats, got, lambda need: self._osm_geometry(key, kind, need))
             ox, oy = mapcells.owner(feats.attrs.get("cx", np.zeros(0)), feats.attrs.get("cy", np.zeros(0)), key.z)
             feats.own = (ox == key.x) & (oy == key.y)
             if feats.clipped is not None:
@@ -1030,6 +1031,40 @@ class MapData:
             if getattr(self, "osmfuel", None) is None:
                 self.osmfuel = osmfuel.OsmFuel(self.raw_dir, self.fetcher)
         self.osmfuel.warm(kind)
+
+    def _osm_from_neighbours(self, key, kind, feats, got):
+        """got ((tags, extra ways): _osm_cell's of key) with the tags of the ways its roads name (src_record) that only
+        the cells their lines cross into hold. A cell's tags are the ways whose box touches it, and an Overture segment
+        can run on past its way: I-70 by Washington PA, a ~600 m segment naming a 250 m way wholly in the next cell
+        east, had no OSM lanes in the two cells west of it, which guessed 1 and 3 lanes where the map says 2, so the
+        road's copies, decks and lane sections differed cell to cell (2026-11-18). Those cells' own tags, asked as
+        _osm_cell asks them (their shard tile, else the Layercake file; nothing where both fail)."""
+        import osmtags
+        tags, ways = got
+        rec = feats.attrs.get("src_record") if feats is not None else None
+        if rec is None or not len(feats):
+            return got
+        want = {}                               # neighbour cell -> the way ids wanted from it
+        for i in range(len(feats)):
+            wid = osmtags.way_id(str(rec[i]))
+            if wid is None or wid in tags:
+                continue
+            rings = [np.asarray(r, np.float64) for p in feats.parts(i) for r in p]
+            if not rings:
+                continue
+            ll = np.concatenate(rings)
+            for k in {str(c) for c in mapcells.cells_of(ll[:, 1], ll[:, 0])} - {str(key)}:
+                want.setdefault(k, set()).add(wid)
+        if not want:
+            return got
+        tags = dict(tags)
+        for k in sorted(want):
+            z, x, y = (int(v) for v in k.split("/"))
+            other, _ = self._osm_cell(mapcells.CellKey(z, x, y), kind)
+            for wid in sorted(want[k]):
+                if wid not in tags and wid in other:
+                    tags[wid] = other[wid]
+        return tags, ways
 
     @staticmethod
     def _osm(feats, got, geometry=None):
