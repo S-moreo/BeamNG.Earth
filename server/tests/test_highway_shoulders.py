@@ -14,7 +14,7 @@ from test_roads import FRAME, flat, rules
 class HighwayShouldersTest(unittest.TestCase):
     def test_dimensions_paint_and_bridges_use_same_travel_lanes(self):
         for direction in (1, -1):
-            for link, lanes, lane_w, left, right in ((False, 3, 4., 1.5, 4.5), (True, 1, 4.8, .875, 2.625),
+            for link, lanes, lane_w, left, right in ((False, 3, 3.65, 1.05, 3.15), (True, 1, 4.8, .875, 2.625),
                                                      (True, 2, 4.8, .875, 2.625)):
                 f = highway(link=link, direction=direction)
                 osmtags.join(f, {1: {'lanes': lanes}})
@@ -43,12 +43,13 @@ class HighwayShouldersTest(unittest.TestCase):
             f=highway(direction=direction)
             osmtags.join(f,{1:{'lanes':3}})
             sp=roads.road_specs(f,lambda la,lo: np.ones_like(la,bool))[0]
-            self.assertEqual(sp.width,18.)
-            self.assertEqual(roads.lane_layout(sp),(12.,3))
+            self.assertAlmostEqual(sp.width,15.15)
+            self.assertAlmostEqual(roads.lane_layout(sp)[0],10.95)
+            self.assertEqual(roads.lane_layout(sp)[1],3)
             graph=navgraph.build(FRAME,[f],flat,(0.,0.))
             self.assertTrue(graph['nodes'])
             for node in graph['nodes'].values():
-                self.assertAlmostEqual(node[1], direction*1.5, places=3)
+                self.assertAlmostEqual(node[1], direction*1.05, places=3)
             self.assertEqual({(e[3],e[4]) for e in graph['edges']},{(3,0)})
 
     def test_shifted_ai_stays_at_bridge_height(self):
@@ -60,7 +61,7 @@ class HighwayShouldersTest(unittest.TestCase):
             self.assertTrue(graph['nodes'])
             self.assertEqual({(e[3],e[4]) for e in graph['edges']}, {(3,0)})
             for node in graph['nodes'].values():
-                self.assertAlmostEqual(node[1], direction*1.5, places=3)
+                self.assertAlmostEqual(node[1], direction*1.05, places=3)
                 self.assertGreaterEqual(node[2], 20.)
 
 
