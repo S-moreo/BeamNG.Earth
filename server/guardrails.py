@@ -861,6 +861,57 @@ def _self_doubles(rows, dist=0.9, dot=0.8, dz=1.5):
 
 
 
+JOIN_M = 1.0         # m: a mapped barrier line's end this near another's end (of the same kind) goes on into it
+
+
+class _Joins:
+    """Where mapped barrier lines go on into another of the same kind (one barrier mapped as a chain of ways): the
+    other line's end is looked up in the cells around this end, so every tile decides the same."""
+
+    def __init__(self, frame, infra_fn):
+        self.frame, self.infra_fn, self.cells = frame, infra_fn, {}
+
+    def _ends(self, key):
+        got = self.cells.get(key)
+        if got is not None:
+            return got
+        got = []
+        try:
+            feats = self.infra_fn(key)
+        except Exception:
+            feats = None
+        if feats is not None and len(feats) and (feats.attrs.get("class") is not None or
+                                                  feats.attrs.get("tags") is not None):
+            for i in range(len(feats)):
+                if int(feats.kind[i]) != mapgeom.LINE:
+                    continue
+                kind = _barrier_kind(feats, i)
+                if kind is None:
+                    continue
+                for part in feats.parts(i):
+                    if not part or len(part[0]) < 2:
+                        continue
+                    lonlat = np.asarray(part[0], np.float64)[[0, -1]]
+                    e, n = mapgeom.enu_xy(feats, self.frame, lonlat)
+                    got.extend((kind, str(feats.ids[i]), np.array([e[j], n[j]], np.float64)) for j in (0, 1))
+        self.cells[key] = got
+        return got
+
+    def at(self, kind, fid, xy):
+        """Whether another mapped line of this kind has an end within JOIN_M of xy (ENU)."""
+        la, lo, _ = self.frame.enu_to_geodetic(np.array([xy[0]], np.float64), np.array([xy[1]], np.float64),
+                                               np.zeros(1, np.float64))
+        try:
+            keys = mapcells.cells_for_points(la, lo, pad_lat=0.00002, pad_lon=0.00002, max_cells=4)
+        except (ValueError, OverflowError):
+            return False
+        for key in keys:
+            for k2, f2, p2 in self._ends(key):
+                if k2 == kind and f2 != fid and float(dnp.hypot(*(p2 - xy))) <= JOIN_M:
+                    return True
+        return False
+
+
 def _mapped_forest_rows(frame, infra_fn, exact, elev, decks=(), parapets=(), bridge_rails=False,
                 supported_decks_out=None, roads=()):
     """Return Forest-item rows for the stock Italy guardrail model.
@@ -905,6 +956,7 @@ def _mapped_forest_rows(frame, infra_fn, exact, elev, decks=(), parapets=(), bri
 
     seen = set()
     placements = []
+    joins = _Joins(frame, infra_fn)
     for key in keys:
         try:
             feats = infra_fn(key)
@@ -954,13 +1006,23 @@ def _mapped_forest_rows(frame, infra_fn, exact, elev, decks=(), parapets=(), bri
 
                 # Fit all modules inside the mapped line. Neighbouring 3 m shapes overlap by 0.2 m;
                 # the unused margins are shared between the two ends, avoiding gaps at either cap.
+                # An end where another mapped line of this kind goes on (one barrier mapped as a chain of
+                # ways) gets a module ending exactly on it, so the two lines' modules meet there.
+                join_a, join_b = joins.at(kind, fid, line[0]), joins.at(kind, fid, line[-1])
+                step = MODULE_STEP_M
                 count = max(1, int(math.floor((total - MODULE_LENGTH_M) / MODULE_STEP_M)) + 1)
-                covered = MODULE_LENGTH_M + (count - 1) * MODULE_STEP_M
+                if join_a and join_b and total > MODULE_LENGTH_M:
+                    count = int(math.ceil((total - MODULE_LENGTH_M) / MODULE_STEP_M - 1e-9)) + 1
+                    step = (total - MODULE_LENGTH_M) / (count - 1) if count > 1 else 0.0
+                covered = MODULE_LENGTH_M + (count - 1) * step
                 start = 0.5 * (total - covered)
+                if join_a != join_b and total > MODULE_LENGTH_M:
+                    start = 0.0 if join_a else total - covered
+                closed_a, closed_b = closed_a or join_a, closed_b or join_b
 
                 spans = []
                 for k in range(count):
-                    sa = start + k * MODULE_STEP_M
+                    sa = start + k * step
                     sb = sa + MODULE_LENGTH_M
                     a, _ = _at(line, arc, float(sa))
                     b, _ = _at(line, arc, float(sb))

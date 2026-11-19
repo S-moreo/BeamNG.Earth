@@ -588,6 +588,34 @@ class GuardrailForestTest(unittest.TestCase):
         for (_, b), (a, _) in zip(ends, ends[1:]):
             self.assertLess(abs(float(b[1] - a[1])), 0.15)
 
+    def test_a_barrier_mapped_as_a_chain_of_ways_meets_at_the_joins(self):
+        """One jersey barrier mapped as three ways end to end (the I-70 loop ramps at Washington, PA, 2026-11-18). Each
+        way's modules were centred on it on their own, so at a join they left a gap or overlapped and turned there:
+        kinks along the run. A module now ends on each join from both sides; a free end keeps the centred margin."""
+        lines = [np.array([[10.0, 0.0], [50.0, 0.0]]), np.array([[50.0, 0.0], [67.3, 0.0]]),
+                 np.array([[67.3, 0.0], [99.0, 0.0]])]
+        ll, off = [], [0]
+        for line in lines:
+            lat, lon, _ = self.frame.enu_to_geodetic(line[:, 0], line[:, 1], np.zeros(2))
+            ll.append(np.column_stack((lon, lat)))
+            off.append(off[-1] + 2)
+        f = mapgeom.Features(layer="infrastructure", ids=np.array(["j1", "j2", "j3"]),
+                             kind=np.full(3, mapgeom.LINE, np.uint8), part_off=np.arange(4, dtype=np.int64),
+                             ring_off=np.arange(4, dtype=np.int64), coord_off=np.array(off, np.int64),
+                             lonlat=np.concatenate(ll),
+                             attrs={"subtype": np.array(["barrier"] * 3), "class": np.array(["jersey_barrier"] * 3)})
+        rows = guardrails.forest_rows(self.frame, lambda _k: f, self.BOX,
+                                      lambda lat, lon: np.full(np.shape(lat), 12.0, np.float64))
+        half = guardrails.MODULE_LENGTH_M / 2
+        starts = sorted(r[1] - half for r in rows)
+        ends = sorted(r[1] + half for r in rows)
+        for join in (50.0, 67.3):
+            self.assertAlmostEqual(min(ends, key=lambda x: abs(x - join)), join, delta=0.02)
+            self.assertAlmostEqual(min(starts, key=lambda x: abs(x - join)), join, delta=0.02)
+        for a, b in zip(starts[1:], ends):
+            self.assertLessEqual(a, b + 1e-6)                                   # no gap anywhere
+        self.assertAlmostEqual(starts[0] - 10.0, 99.0 - ends[-1], delta=0.3)     # (free ends: margins alike)
+
     def test_a_skewed_lower_road_rail_stays_on_the_ground(self):
         """A lower road 23° off a deck still clears the deck's parallel test (Drie Merenweg under the
         Zuidtangent). The rail follows the lower road, so it stays at ground height on that road's edge
