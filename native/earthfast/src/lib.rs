@@ -6717,6 +6717,8 @@ fn earthfast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // a window's selection, pieces, clip test, resampling and sort in one call) and railways.road_underpasses
     // (railunder: a layer's roads with a tunnel in an UnderpassIndex, a window's short tunnels in one call). 488-490
     // are other branches'
-    m.add("VERSION", 491)?;
+    // 492: dual_carriageways takes a highway running on from the road end to end as its twin only when no other road
+    // is beside it (a lane section paired with the section before it, capped to DUAL_MIN_W)
+    m.add("VERSION", 492)?;
     Ok(())
 }
