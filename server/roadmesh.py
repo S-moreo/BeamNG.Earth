@@ -31,8 +31,10 @@ import shells
 DRAPE_STEP = 2.0        # m between ribbon cross-sections (the physics block's lattice)
 # Metres above the physics ground, which grading.ROAD_LIFT raises under roads.
 LIFT = {"base": 0.0, "edge": 0.001, "gutter": 0.0015, "mark": 0.002, "frontage": 0.03,
-        # road wear (roadwear.py): its materials write no depth (roadwear.materials.json), so their order in the mesh,
-        # not their height, decides what lies on top: the strips (fade materials) first, the paint over them
+        # road wear (roadwear.py): the spots and crack lines write no depth (roadwear.materials.json), so their order in
+        # the mesh, not their height, decides what lies on top: the strips (fade materials) first, the paint over them
+        # (the strips write depth since 2026-11-19, as the stock tread marks do: without it they took no sun shadow and
+        # hid crosswalks; in game, High Street Morgantown, the paint 0.2 mm under them stayed whole and did not flicker)
         # (2026-11-11, the user: "can we make the road decals even closer to the ground?": 3-3.2 cm -> 1.2-1.4 cm, the
         # crack lines on the paint's own tight ground following)
         # then (the user: "make both a pixel or 2 above the ground so they dont z fight"): the paint 1 cm -> 5 mm, the wear
