@@ -32,10 +32,10 @@ import roadshape as _roadshape
 DRAPE_STEP = 2.0        # m between ribbon cross-sections (the physics block's lattice)
 # Metres above the physics ground, which grading.ROAD_LIFT raises under roads.
 LIFT = {"base": 0.0, "edge": 0.001, "gutter": 0.0015, "mark": 0.002, "frontage": 0.03,
-        # road wear (roadwear.py): the spots and crack lines write no depth (roadwear.materials.json), so their order in
-        # the mesh, not their height, decides what lies on top: the strips (fade materials) first, the paint over them
-        # (the strips write depth since 2026-11-19, as the stock tread marks do: without it they took no sun shadow and
-        # hid crosswalks; in game, High Street Morgantown, the paint 0.2 mm under them stayed whole and did not flicker)
+        # road wear (roadwear.py): their order in the mesh (_draw_rank), not their height, decides what lies on top. Their
+        # materials write depth since 2026-11-19, as the stock road decals do (without it they took no sun shadow), but
+        # the layers are a fraction of a mm apart: in game (High Street, Morgantown) the paint 0.2 mm under the strips,
+        # drawn first, stayed whole and did not flicker
         # (2026-11-11, the user: "can we make the road decals even closer to the ground?": 3-3.2 cm -> 1.2-1.4 cm, the
         # crack lines on the paint's own tight ground following)
         # then (the user: "make both a pixel or 2 above the ground so they dont z fight"): the paint 1 cm -> 5 mm, the wear
@@ -52,7 +52,7 @@ WEAR_TOL = float(os.environ.get("BNE_WEAR_TOL", "0.02"))
 # section 2.7 and its addendum): the stock maps' markings float ~5 mm over their road (Italy's mesh lines 4.9 mm p50),
 # so the overlays here sit a few mm up, markings 5 mm, tyre wear 4 mm, edge blends 2.5 mm, the surface variation
 # (roadwear.surface_chunks) 3 mm; the mesh's draw order does the layering (v2_rank: the strips' materials write depth
-# since 2026-11-19, as the stock road decals do, else they take no sun shadow; the spots and crack lines write none).
+# since 2026-11-19, as the stock road decals do, else they take no sun shadow; the spots and crack lines too).
 # An overlay triangle the ground follow leaves whole is raised where the drawn ground bulges inside it, so the ground
 # stays MARK_MIN_M under every overlay (follow_ground's clear: with fewer rows than the terrain the paint sagged into it,
 # 6.9 mm deep at Fells Point with the 2 mm lift, markprobe.py); cutting those triangles along the terrain's instead was
