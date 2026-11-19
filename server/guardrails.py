@@ -554,16 +554,20 @@ def _along_road(a, b, rsegs):
     other = aligned & (np.arange(len(dots)) != k)
     median, gap = False, None
     if other.any():
+        # The other carriageway is the nearest aligned segment on the far side of the rail. Segments on this side
+        # are this carriageway's own (its next segment on a bend is often nearer than the road across the rail:
+        # two one-lane ramps side by side, the I-70 loop at Washington, PA, 2026-11-18).
+        t1 = float(np.clip(along[k], 0.0, rsegs["len"][k]))
+        n1 = rsegs["a"][k] + t1 * unit
         a2, u2, l2 = rsegs["a"][other], rsegs["unit"][other], rsegs["len"][other]
         t2 = np.clip(np.sum((mid - a2) * u2, axis=1), 0.0, l2)
         n2 = a2 + t2[:, None] * u2
         d2 = dnp.hypot(*(mid - n2).T) - rsegs["half"][other]
-        j = int(np.argmin(d2))
-        if float(d2[j]) <= MEDIAN_REACH_M:
-            t1 = float(np.clip(along[k], 0.0, rsegs["len"][k]))
-            n1 = rsegs["a"][k] + t1 * unit
-            median = float(dnp.dot(mid - n1, mid - n2[j])) < 0.0
-            if median:
+        across = dnp.matmul(mid - n2, mid - n1) < 0.0
+        if across.any():
+            j = int(np.flatnonzero(across)[np.argmin(d2[across])])
+            if float(d2[j]) <= MEDIAN_REACH_M:
+                median = True
                 # (the gap between the two carriageways' edges, from this one's line toward the other: its middle,
                 # or the middle of their overlap; a mapped median barrier inside either goes there, _shift_to_edge)
                 v2 = n2[j] - n1

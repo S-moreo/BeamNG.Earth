@@ -539,6 +539,29 @@ class GuardrailForestTest(unittest.TestCase):
         for row in in_gap:
             self.assertAlmostEqual(row[2], 8.2, delta=0.05)
 
+    def test_a_barrier_between_two_ramps_on_a_bend_stays_on_its_line(self):
+        """Two one-lane ramps side by side round a loop (I-70 at Washington, PA, 2026-11-18), a jersey barrier mapped
+        between them. Each 8.3 m carriageway reaches over the barrier's line, and on the bend a ramp's own next
+        segment was nearer than the other ramp, so a module was taken for a side rail and pushed to one ramp's edge:
+        the run zigzagged between two lines in the lanes. Every module is now a median, on the mapped line."""
+        def arc(radius, step_deg=4.0):
+            t = np.deg2rad(np.arange(200.0, 340.0 + 1e-9, step_deg))
+            return np.column_stack((100.0 + radius * np.cos(t), 60.0 + radius * np.sin(t)))
+        ramps = [self.road(arc(50.0), width=8.3), self.road(arc(56.0), width=8.3)]
+        line = arc(53.0, 1.0)
+        lat, lon, _ = self.frame.enu_to_geodetic(line[:, 0], line[:, 1], np.zeros(len(line)))
+        f = mapgeom.Features(layer="infrastructure", ids=np.array(["jersey-1"]),
+                             kind=np.array([mapgeom.LINE], np.uint8), part_off=np.array([0, 1], np.int64),
+                             ring_off=np.array([0, 1], np.int64), coord_off=np.array([0, len(line)], np.int64),
+                             lonlat=np.column_stack((lon, lat)),
+                             attrs={"subtype": np.array(["barrier"]), "class": np.array(["jersey_barrier"])})
+        rows = guardrails.forest_rows(self.frame, lambda _k: f, (0.0, -20.0, 200.0, 60.0),
+                                      lambda lat, lon: np.full(np.shape(lat), 12.0, np.float64), roads=ramps)
+        self.assertGreater(len(rows), 30)
+        for row in rows:
+            radius = float(np.hypot(row[1] - 100.0, row[2] - 60.0))
+            self.assertAlmostEqual(radius, 53.0, delta=0.1)
+
     def test_a_skewed_lower_road_rail_stays_on_the_ground(self):
         """A lower road 23° off a deck still clears the deck's parallel test (Drie Merenweg under the
         Zuidtangent). The rail follows the lower road, so it stays at ground height on that road's edge
