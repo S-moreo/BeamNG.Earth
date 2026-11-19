@@ -89,6 +89,9 @@ MATERIALS = tuple(sorted({v["m"] for v in LOOKS.values()}
 # depth (translucentZWrite, as every stock road decal; without it the forward pass gave them no sun shadow and drew
 # them over the paint) and take the stock tread marks' tint 0.7, opacityFactor 0.69 and each texture's AO map.
 STRIPS_ON = os.environ.get("BNE_WEAR_STRIPS", "off").strip().lower() == "on"
+# The tyre polish's texture stretched along to TREAD_TL_SCALE x its plain length (wear_plan's 4 x the width, ~13 m:
+# the same polish every 13 m, plain at speed; the user, 2026-11-19), with roadmesh._wear_warp on top
+TREAD_TL_SCALE = 2.0
 STRIP_KINDS = (K_TREAD, K_SEALED, K_CRACKS, K_MANHOLE)   # (the manhole covers too: bright white discs in game)
 
 
@@ -273,6 +276,8 @@ def tile_chunks(roads, seen, box, tier, exclude=None, aisles=(), skip=(), leaves
     for k in range(len(A)):
         kind, width, tl, slen, cell = A[k]
         kind = int(kind)
+        if kind == K_TREAD:
+            tl *= TREAD_TL_SCALE
         if kind in STRIP_KINDS and not STRIPS_ON or SURFACE_V2 and kind == K_TREAD:
             continue
         look = LOOKS[kind]

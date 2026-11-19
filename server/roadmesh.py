@@ -108,10 +108,10 @@ WEAR_NOISE = float(os.environ.get("BNE_WEAR_NOISE", "0.7"))
 WEAR_NOISE_M = (7.0, 2.5)
 WEAR_NOISE_TAPER_M = 6.0
 # ... and their texture's repeat broken up (_wear_warp): v shifted by up to WEAR_WARP tiles (BNE_WEAR_WARP; 0: none),
-# smoothly over WEAR_WARP_M cells along (at most 1.5 x WEAR_WARP / WEAR_WARP_M tiles a m of stretch: the tread's 13 m
-# tile runs 0.4x to 1.6x its length), and a seeded phase per piece
-WEAR_WARP = float(os.environ.get("BNE_WEAR_WARP", "0.35"))
-WEAR_WARP_M = 9.0
+# smoothly over WEAR_WARP_M cells along (at most 1.5 x WEAR_WARP / WEAR_WARP_M tiles a m of stretch: the tread's ~26 m
+# tile (roadwear.TREAD_TL_SCALE) runs 0.35x to 1.65x its length, never backwards), and a seeded phase per piece
+WEAR_WARP = float(os.environ.get("BNE_WEAR_WARP", "0.3"))
+WEAR_WARP_M = 18.0
 WEAR_NOISE_FROM = 0.3       # (the noise's lowest part left solid: lighter patches in the strip as it was, not the whole
                             # strip lighter with a solid collar where the noise tapers off at its ends)
 _WEAR_RAMP = ((0.17, 0.38, 0.52, 0.71, 0.86, 0.965, 1.0), (0.066, 0.098, 0.129, 0.160, 0.191, 0.223, FADE_V_BAND))
