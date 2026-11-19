@@ -97,6 +97,19 @@ EDGE_FADE_SHARE = 0.38
 END_FADE_M = 14.0
 END_FADE_SHARE = 0.3
 FADE_V_BAND = 0.25
+# The wear strips' noise (the user, 2026-11-19: the tyre polish "is too uniform", a light performant fix, no more
+# textures): the fade uv's v moved into the map's own start ramp at each point, by a seeded value noise of its world
+# position (two octaves, WEAR_NOISE_M cells: the same at a tile's edge from both sides, and the lanes' strips apart).
+# The opacity drops by up to WEAR_NOISE (BNE_WEAR_NOISE; 0: none) in patches, none at a strip's open ends, growing over
+# WEAR_NOISE_TAPER_M past their fades. The points lie every DRAPE_STEP along, so no point is added; the same map, one
+# sample, so no texture either. _WEAR_RAMP: the opacity map's ramp below FADE_V_BAND (dirt_fade_o, measured), opacity
+# -> v.
+WEAR_NOISE = float(os.environ.get("BNE_WEAR_NOISE", "0.45"))
+WEAR_NOISE_M = (7.0, 2.5)
+WEAR_NOISE_TAPER_M = 6.0
+WEAR_NOISE_FROM = 0.5       # (the noise's lower half left solid: lighter patches in the strip as it was, not the whole
+                            # strip lighter with a solid collar where the noise tapers off at its ends)
+_WEAR_RAMP = ((0.52, 0.71, 0.86, 0.965, 1.0), (0.129, 0.160, 0.191, 0.223, FADE_V_BAND))
 
 
 def round_dirt_centerline(pts, half):
@@ -1493,7 +1506,8 @@ def build(frame, chunks, elev, origin, lift=0.0, clip=None, follow=False, q=None
     TL = []                                     # per triangle: its layer's lift over the ground (None: on a deck)
     RI = []                                     # per triangle: its ribbon (-1: a filled polygon), for the fade uv
     RW = []                                     # per triangle: a raceway's (no step cap: follow_ground, below)
-    rpar = []                                   # per ribbon: _fade_uv's (feather share, tl, tu, slen, open ends, end fade)
+    rpar = []                                   # per ribbon: _fade_uv's (feather share, tl, tu, slen, open ends, end fade,
+                                                # noise)
     k0 = nverts = 0
     # (the ground ribbons' lengths along and end distances to the deck ends, one call each as above)
     runs = _ground_runs([r for r, _c in rbc if r[5] is None and len(r[0]) >= 2], ab_pts) if len(deck_abuts) else None
@@ -1573,7 +1587,8 @@ def build(frame, chunks, elev, origin, lift=0.0, clip=None, follow=False, q=None
         RW.append(np.full(len(tri), str(c.get("fid", "")).startswith("osm-raceway-")))
         ends = c.get("fends") or (1, 1)
         rpar.append((fu, float(c.get("tl") or 10.0), tu, float(slen) if slen else np.nan,
-                     float(bool(ends[0])), float(bool(ends[1])), float(c.get("fend_m") or END_FADE_M)))
+                     float(bool(ends[0])), float(bool(ends[1])), float(c.get("fend_m") or END_FADE_M),
+                     float(m.startswith(WEAR_STRIP_PREFIX))))
         nverts += len(P[-1])
     # Match the asphalt tile scale of the visible terrain or of satmat's mesh layer.
     asphalt_repeat = FRONTAGE_TERRAIN_REPEAT_M if lift > 0 else FRONTAGE_REPEAT_M
@@ -1710,7 +1725,7 @@ def build(frame, chunks, elev, origin, lift=0.0, clip=None, follow=False, q=None
     # primitive per material, in the list's order: _draw_rank)
     vr = np.full(len(P), -1, np.int64)
     vr[T.ravel()] = np.repeat(RI, 3)
-    fade = _fade_uv(UV, vr, rpar)
+    fade = _fade_uv(UV, vr, rpar, P[:, :2])
     if asphalt:
         used = np.unique(T[M == mats.index(FRONTAGE_ASPHALT)])
         weight = _frontage_weight(P[used, :2], frontage_mask)
@@ -1757,14 +1772,15 @@ def _keep_up(tri, xy, base):
                                      np.ascontiguousarray(xy, np.float64), int(base))]
 
 
-def _fade_uv(UV, vr, par):
+def _fade_uv(UV, vr, par, xy=None):
     """The fade uv (n, 2) of a mesh's points (the opacity map's: FADE_PREFIX) from their colour uv: vr (n,) each
     point's ribbon (-1: none), par per ribbon (feather share fu, texture length tl, repeats across tu, slen (nan: not a
-    strip), start open, end open). Across: u / tu within fu of an edge ramps 0 -> 0.5 (1 -> 0.5), else 0.5: the strips'
-    rows lie on those lines, so a point the clip or the ground cut put inside a band gets what the GPU interpolates
-    there. Along: v x tl is m along the road (ribbons' _ribbon_v): 0 at an open start ramping to FADE_V_BAND
-    END_FADE_M in, 1 at an open end, 0.5 between. Vectorized (PR #455 carried a colour per point through the cuts).
-    Pure."""
+    strip), start open, end open, end fade m, noise). Across: u / tu within fu of an edge ramps 0 -> 0.5 (1 -> 0.5), else 0.5: the
+    strips' rows lie on those lines, so a point the clip or the ground cut put inside a band gets what the GPU
+    interpolates there. Along: v x tl is m along the road (ribbons' _ribbon_v): 0 at an open start ramping to
+    FADE_V_BAND END_FADE_M in, 1 at an open end, 0.5 between; a noise ribbon's (the wear strips) between its fades at
+    the opacity _wear_noise(xy) (n, 2) leaves (WEAR_NOISE). Vectorized (PR #455 carried a colour per point through the
+    cuts). Pure."""
     C = np.full((len(UV), 2), 0.5)
     has = vr >= 0
     if not has.any() or not len(par):
@@ -1772,6 +1788,7 @@ def _fade_uv(UV, vr, par):
     cols = np.asarray(par, np.float64)[vr[has]].T
     fu, tl, tu, slen, o0, o1 = cols[:6]
     fend = cols[6] if len(cols) > 6 else np.full(len(fu), END_FADE_M)     # (a strip's own end fade: "fend_m")
+    noisy = cols[7] if len(cols) > 7 else np.zeros(len(fu))
     u = UV[has, 0] / tu
     f = np.maximum(fu, 1e-9)
     cu = np.where(u < fu, 0.5 * u / f, np.where(u > 1.0 - fu, 1.0 - 0.5 * (1.0 - u) / f, 0.5))
@@ -1787,8 +1804,46 @@ def _fade_uv(UV, vr, par):
     cv[at] = FADE_V_BAND * np.clip(s[at] / fd[at], 0.0, 1.0)
     at = strip & (o1 > 0.0) & (s >= sl - fade)
     cv[at] = (1.0 - FADE_V_BAND) + FADE_V_BAND * np.clip((s[at] - (sl[at] - fade[at])) / fd[at], 0.0, 1.0)
+    nz = (noisy > 0.0) & np.isfinite(slen)
+    if WEAR_NOISE > 0.0 and xy is not None and nz.any():
+        # (the noise grows from none at each open end's fade over WEAR_NOISE_TAPER_M: past both, the full amount)
+        grow = np.ones(len(s))
+        grow = np.where(o0 > 0.0, np.minimum(grow, (s - fade) / WEAR_NOISE_TAPER_M), grow)
+        grow = np.where(o1 > 0.0, np.minimum(grow, (sl - fade - s) / WEAR_NOISE_TAPER_M), grow)
+        nz &= grow > 0.0
+        if nz.any():
+            k = np.flatnonzero(has)[nz]
+            o = 1.0 - min(WEAR_NOISE, 1.0 - _WEAR_RAMP[0][0]) * np.minimum(grow[nz], 1.0) * _wear_noise(xy[k])
+            cv[nz] = np.interp(o, *_WEAR_RAMP)
     C[has, 1] = cv
     return C
+
+
+def _wear_noise(xy):
+    """Value noise 0..1 at world points xy (n, 2): WEAR_NOISE_M's octaves (the first 2 / 3 of it), each a smoothstep
+    between seeded lattice values (a splitmix64 hash of the cell's corner), 0 below WEAR_NOISE_FROM. Pure,
+    deterministic."""
+    out = np.zeros(len(xy))
+    for octave, (cell, w) in enumerate(zip(WEAR_NOISE_M, (2.0 / 3.0, 1.0 / 3.0))):
+        g = np.asarray(xy, np.float64) / cell
+        i = np.floor(g)
+        f = g - i
+        f = f * f * (3.0 - 2.0 * f)
+        i = i.astype(np.int64)
+
+        def at(di, dj):
+            with np.errstate(over="ignore"):
+                h = ((i[:, 0] + di).astype(np.uint64) * np.uint64(0x9E3779B97F4A7C15)
+                     ^ (i[:, 1] + dj).astype(np.uint64) * np.uint64(0xC2B2AE3D27D4EB4F) ^ np.uint64(octave + 1))
+                h ^= h >> np.uint64(31)
+                h *= np.uint64(0xBF58476D1CE4E5B9)
+                h ^= h >> np.uint64(29)
+            return (h >> np.uint64(11)).astype(np.float64) / float(1 << 53)
+
+        a = at(0, 0) + (at(1, 0) - at(0, 0)) * f[:, 0]
+        b = at(0, 1) + (at(1, 1) - at(0, 1)) * f[:, 0]
+        out += w * (a + (b - a) * f[:, 1])
+    return np.clip((out - WEAR_NOISE_FROM) / (1.0 - WEAR_NOISE_FROM), 0.0, 1.0)
 
 
 DECK_DEPTH = 1.2        # m of deck slab under the surface

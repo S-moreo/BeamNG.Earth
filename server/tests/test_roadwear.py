@@ -169,6 +169,35 @@ class RoadWearTest(unittest.TestCase):
         fade = mesh[5]
         self.assertLess(fade[:, 1].min(), 0.05)     # (a run's open start)
 
+    def test_wear_noise_patches_the_strips_not_their_fades_or_the_rest(self):
+        """The wear strips' fade uv: lighter patches (the noise) between the end fades, the same at a point from two
+        tiles; BNE_WEAR_NOISE 0: none."""
+        rd = [("a", spec(lanes=2), line(-400, 128, 700, 128), 0.0)]
+        ch = [c for c in plan(rd, tier=1) if c["m"] == "bne_wear_tread"]
+        flat = lambda la, lo: np.zeros(np.shape(la))      # noqa: E731
+
+        def mesh(box):
+            P, T, UV, mats, M, F = roadmesh.build(FRAME, ch, flat, (0.0, 0.0, 0.0), clip=box)
+            return P, UV, F
+
+        P, UV, F = mesh(BOX)
+        keep = roadmesh.WEAR_NOISE
+        try:
+            roadmesh.WEAR_NOISE = 0.0                   # (BNE_WEAR_NOISE 0: as before)
+            F0 = mesh(BOX)[2]
+        finally:
+            roadmesh.WEAR_NOISE = keep
+        lit = F[:, 1] != F0[:, 1]
+        self.assertTrue(lit.any() and (F[:, 1] == 0.5).any(), "some patches lighter, the rest solid")
+        self.assertTrue(np.all(F0[lit, 1] == 0.5), "only between the end fades")
+        o = np.interp(F[lit, 1], roadmesh._WEAR_RAMP[1], roadmesh._WEAR_RAMP[0])
+        self.assertGreaterEqual(o.min(), 1 - roadmesh.WEAR_NOISE - 1e-6)
+        np.testing.assert_array_equal(F[:, 0], F0[:, 0])
+        P2, UV2, F2 = mesh((128.0, 0.0, 384.0, 256.0))      # (a tile beside: the same at the points both have)
+        a = {tuple(np.round(p[:2], 3)): f for p, f in zip(P, F) if 130 < p[0] < 250}
+        same = [np.allclose(a[k], f) for p, f in zip(P2, F2) if (k := tuple(np.round(p[:2], 3))) in a]
+        self.assertTrue(same and all(same))
+
     def test_grass_sides(self):
         """A rural lane through fields gets the grassy edge on its field side; a town street, a motorway and scrub
         keep the dirt edge."""
