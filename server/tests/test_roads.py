@@ -2253,3 +2253,46 @@ class GravelTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DualPairingTest(unittest.TestCase):
+    # I-70 at Washington PA (40.1837, -80.2590): a 44 m lane section of the westbound carriageway paired with its own
+    # section before it (end to end, 0.03 m "apart") instead of the eastbound one 23 m off, and capped to DUAL_MIN_W
+    LL = {"sib": [(-80.2580277, 40.184116), (-80.2581705, 40.1840759), (-80.2583902, 40.1840145),
+                  (-80.2584451, 40.1839992), (-80.2589836, 40.1838489)],
+          "tail": [(-80.2589836, 40.1838489), (-80.258984, 40.1838488), (-80.2594614, 40.1837054)],
+          "east": [(-80.2596836, 40.1834094), (-80.2595437, 40.183453), (-80.2593283, 40.1835196),
+                   (-80.2590591, 40.1836029), (-80.2589183, 40.1836455), (-80.2586885, 40.1837139),
+                   (-80.2584371, 40.1837873), (-80.2580461, 40.1838995)]}
+
+    def test_a_lane_section_is_not_paired_with_the_piece_before_it(self):
+        lon0, lat0 = -80.2588, 40.1838
+        lines = [[((lo - lon0) * M_LON, (la - lat0) * M_LAT) for lo, la in self.LL[k]] for k in ("sib", "tail", "east")]
+        f = features(lines, ["motorway"] * 3, subtypes=["road"] * 3)
+        f.attrs["name"] = np.array(["I-70"] * 3, dtype=object)
+        sp = [roads.Spec(14.0, "paved", False, "motorway", True, 2.5, 1, 100.0)] * 2 + \
+             [roads.Spec(18.0, "paved", False, "motorway", True, 2.5, 1, 100.0)]
+        got = roads.dual_carriageways(f, sp)
+        self.assertEqual(got[1].width, 14.0, "not squeezed to one lane")
+        self.assertGreater(got[1].median, roads.DUAL_GAP_M[0], "its twin is the eastbound carriageway")
+
+    def _pair(self, lines, ws=(14.0, 14.0, 14.0)):
+        f = features(lines, ["motorway"] * len(lines), subtypes=["road"] * len(lines))
+        f.attrs["name"] = np.array(["I-70"] * len(lines), dtype=object)
+        return roads.dual_carriageways(f, [roads.Spec(w, "paved", False, "motorway", True, 2.5, 1, 100.0) for w in ws])
+
+    def test_a_long_section_bending_away_from_the_one_before_is_not_its_twin(self):
+        # the same on the eastbound side: a 9-point section curving off from its sibling, a median distance over DUAL_GAP_M[0]
+        sib = [(-200.0, 0.0), (0.0, 0.0)]
+        tail = [(x, 0.004 * x * x) for x in (0.0, 3.0, 8.0, 13.0, 18.0, 24.0, 30.0, 36.0, 42.0)]
+        twin = [(100.0, 30.0), (-200.0, 30.0)]
+        got = self._pair([sib, tail, twin])
+        self.assertEqual(got[1].width, 14.0)
+        self.assertGreater(got[1].median, 20.0, "its twin is the other carriageway")
+
+    def test_twins_that_meet_at_a_split_node_still_pair(self):
+        east = [(0.0, 0.0), (40.0, 12.0), (400.0, 12.0)]
+        west = [(400.0, -12.0), (40.0, -12.0), (0.0, 0.0)]
+        got = self._pair([east, west], ws=(14.0, 14.0))
+        self.assertIsNotNone(got[0].median)
+        self.assertIsNotNone(got[1].median)
