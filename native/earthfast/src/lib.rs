@@ -7346,6 +7346,8 @@ fn earthfast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // 512: try598 with both 510 (P2a) and 511 (P1c trim) merged
     // 513: v2 P2a2 (fork_records: noses from the lanes + a fitted gore width, the separation held; at-grade slip lanes
     // flagged, no record; three more params)
-    m.add("VERSION", 513)?;
+    // 514: dual_carriageways takes a highway running on from the road end to end as its twin only when no other road
+    // is beside it (a lane section paired with the section before it, capped to DUAL_MIN_W)
+    m.add("VERSION", 514)?;
     Ok(())
 }
