@@ -198,6 +198,32 @@ class RoadWearTest(unittest.TestCase):
         same = [np.allclose(a[k], f) for p, f in zip(P2, F2) if (k := tuple(np.round(p[:2], 3))) in a]
         self.assertTrue(same and all(same))
 
+    def test_wear_warp_breaks_the_tread_repeat_the_same_in_two_tiles(self):
+        """The wear strips' colour v: no longer distance / tl (a phase and a smooth warp), the same at a point from
+        two tiles; BNE_WEAR_WARP 0: as before."""
+        rd = [("a", spec(lanes=2), line(-400, 128, 700, 128), 0.0)]
+        ch = [c for c in plan(rd, tier=1) if c["m"] == "bne_wear_tread"]
+        flat = lambda la, lo: np.zeros(np.shape(la))      # noqa: E731
+
+        def mesh(box):
+            return roadmesh.build(FRAME, ch, flat, (0.0, 0.0, 0.0), clip=box)
+
+        P, _T, UV, _m, _M, F = mesh(BOX)
+        keep = roadmesh.WEAR_WARP
+        try:
+            roadmesh.WEAR_WARP = 0.0
+            P0, _T, UV0, _m, _M, F0 = mesh(BOX)
+        finally:
+            roadmesh.WEAR_WARP = keep
+        np.testing.assert_array_equal(F, F0)
+        d = UV[:, 1] - UV0[:, 1]
+        self.assertGreater(np.ptp(d), 0.1, "a warp along, not one shift")
+        self.assertLessEqual(np.abs(d - np.round(d)).max(), 0.5 + 1e-9)
+        P2, _T, UV2, _m, _M, _F = mesh((128.0, 0.0, 384.0, 256.0))
+        a = {tuple(np.round(p[:2], 3)): uv for p, uv in zip(P, UV) if 130 < p[0] < 250}
+        same = [np.allclose(a[k], uv) for p, uv in zip(P2, UV2) if (k := tuple(np.round(p[:2], 3))) in a]
+        self.assertTrue(same and all(same))
+
     def test_grass_sides(self):
         """A rural lane through fields gets the grassy edge on its field side; a town street, a motorway and scrub
         keep the dirt edge."""

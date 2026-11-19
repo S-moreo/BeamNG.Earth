@@ -107,6 +107,11 @@ FADE_V_BAND = 0.25
 WEAR_NOISE = float(os.environ.get("BNE_WEAR_NOISE", "0.7"))
 WEAR_NOISE_M = (7.0, 2.5)
 WEAR_NOISE_TAPER_M = 6.0
+# ... and their texture's repeat broken up (_wear_warp): v shifted by up to WEAR_WARP tiles (BNE_WEAR_WARP; 0: none),
+# smoothly over WEAR_WARP_M cells along (at most 1.5 x WEAR_WARP / WEAR_WARP_M tiles a m of stretch: the tread's 13 m
+# tile runs 0.4x to 1.6x its length), and a seeded phase per piece
+WEAR_WARP = float(os.environ.get("BNE_WEAR_WARP", "0.35"))
+WEAR_WARP_M = 9.0
 WEAR_NOISE_FROM = 0.3       # (the noise's lowest part left solid: lighter patches in the strip as it was, not the whole
                             # strip lighter with a solid collar where the noise tapers off at its ends)
 _WEAR_RAMP = ((0.17, 0.38, 0.52, 0.71, 0.86, 0.965, 1.0), (0.066, 0.098, 0.129, 0.160, 0.191, 0.223, FADE_V_BAND))
@@ -1735,6 +1740,7 @@ def build(frame, chunks, elev, origin, lift=0.0, clip=None, follow=False, q=None
     order = sorted(range(len(mats)), key=lambda j: (v2_rank(mats[j]), j) if SURFACE_V2 else (_draw_rank(mats[j]), j))
     remap = np.empty(len(mats), np.int64)
     remap[order] = np.arange(len(mats))
+    UV = _wear_warp(UV, vr, rpar)
     return out[0], T, UV, [mats[j] for j in order], remap[np.asarray(M, np.int64)], fade
 
 
@@ -1819,31 +1825,69 @@ def _fade_uv(UV, vr, par, xy=None):
     return C
 
 
+def _lattice01(i, j, salt):
+    """Seeded values 0..1 at integer lattice points (i, j) (n,): a splitmix64 hash of each with salt. Pure."""
+    with np.errstate(over="ignore"):
+        h = (np.asarray(i, np.int64).astype(np.uint64) * np.uint64(0x9E3779B97F4A7C15)
+             ^ np.asarray(j, np.int64).astype(np.uint64) * np.uint64(0xC2B2AE3D27D4EB4F)
+             ^ np.asarray(salt, np.int64).astype(np.uint64))
+        h ^= h >> np.uint64(31)
+        h *= np.uint64(0xBF58476D1CE4E5B9)
+        h ^= h >> np.uint64(29)
+    return (h >> np.uint64(11)).astype(np.float64) / float(1 << 53)
+
+
 def _wear_noise(xy):
     """Value noise 0..1 at world points xy (n, 2): WEAR_NOISE_M's octaves (the first 2 / 3 of it), each a smoothstep
-    between seeded lattice values (a splitmix64 hash of the cell's corner), 0 below WEAR_NOISE_FROM. Pure,
-    deterministic."""
+    between seeded lattice values (_lattice01) on a lattice turned 30 / -20 degrees, 0 below WEAR_NOISE_FROM. Pure, deterministic."""
     out = np.zeros(len(xy))
-    for octave, (cell, w) in enumerate(zip(WEAR_NOISE_M, (2.0 / 3.0, 1.0 / 3.0))):
-        g = np.asarray(xy, np.float64) / cell
+    xy = np.asarray(xy, np.float64)
+    for octave, (cell, w, turn) in enumerate(zip(WEAR_NOISE_M, (2.0 / 3.0, 1.0 / 3.0), (0.52, -0.35))):
+        c, sn = math.cos(turn), math.sin(turn)      # (each octave's lattice turned: none runs along a lane, no beat)
+        g = np.c_[c * xy[:, 0] - sn * xy[:, 1], sn * xy[:, 0] + c * xy[:, 1]] / cell
         i = np.floor(g)
         f = g - i
         f = f * f * (3.0 - 2.0 * f)
         i = i.astype(np.int64)
-
-        def at(di, dj):
-            with np.errstate(over="ignore"):
-                h = ((i[:, 0] + di).astype(np.uint64) * np.uint64(0x9E3779B97F4A7C15)
-                     ^ (i[:, 1] + dj).astype(np.uint64) * np.uint64(0xC2B2AE3D27D4EB4F) ^ np.uint64(octave + 1))
-                h ^= h >> np.uint64(31)
-                h *= np.uint64(0xBF58476D1CE4E5B9)
-                h ^= h >> np.uint64(29)
-            return (h >> np.uint64(11)).astype(np.float64) / float(1 << 53)
-
-        a = at(0, 0) + (at(1, 0) - at(0, 0)) * f[:, 0]
-        b = at(0, 1) + (at(1, 1) - at(0, 1)) * f[:, 0]
+        a = _lattice01(i[:, 0], i[:, 1], octave + 1)
+        a = a + (_lattice01(i[:, 0] + 1, i[:, 1], octave + 1) - a) * f[:, 0]
+        b = _lattice01(i[:, 0], i[:, 1] + 1, octave + 1)
+        b = b + (_lattice01(i[:, 0] + 1, i[:, 1] + 1, octave + 1) - b) * f[:, 0]
         out += w * (a + (b - a) * f[:, 1])
     return np.clip((out - WEAR_NOISE_FROM) / (1.0 - WEAR_NOISE_FROM), 0.0, 1.0)
+
+
+def _wear_warp(UV, vr, par):
+    """UV (n, 2) with the wear strips' v (along) warped: the stock tread texture repeats every tl (~13 m), a pattern
+    plain at speed (the user, 2026-11-19). v gets a whole-piece phase and a smooth 1D value noise of the distance
+    along the piece (WEAR_WARP_M cells, +- WEAR_WARP tiles), and half the pieces are mirrored across (u), all seeded by
+    the piece's length and texture length (the same in every tile that has it: no seam at a tile's edge). The fade uv
+    is made before, from the plain v. Pure."""
+    has = vr >= 0
+    if WEAR_WARP <= 0.0 or not has.any() or not len(par):
+        return UV
+    cols = np.asarray(par, np.float64)
+    if cols.shape[1] < 8:
+        return UV
+    k = np.flatnonzero(has)
+    _fu, tl, tu, slen, _o0, _o1, _fend, noisy = cols[vr[k]].T
+    on = (noisy > 0.0) & np.isfinite(slen)
+    if not on.any():
+        return UV
+    k, tl, tu, slen = k[on], tl[on], tu[on], slen[on]
+    seed = np.round(slen * 1000.0).astype(np.int64) * 7919 + np.round(tl * 100.0).astype(np.int64)
+    g = UV[k, 1] * tl / WEAR_WARP_M
+    i = np.floor(g)
+    f = g - i
+    f = f * f * (3.0 - 2.0 * f)
+    i = i.astype(np.int64)
+    a = _lattice01(i, seed, 0x5157)
+    n = a + (_lattice01(i + 1, seed, 0x5157) - a) * f
+    out = np.array(UV, np.float64, copy=True)
+    out[k, 1] += _lattice01(seed, seed, 0x7A11) + WEAR_WARP * (2.0 * n - 1.0)
+    flip = _lattice01(seed, seed, 0xF11B) < 0.5     # (half the pieces mirrored across: twice the looks)
+    out[k[flip], 0] = tu[flip] - out[k[flip], 0]
+    return out
 
 
 DECK_DEPTH = 1.2        # m of deck slab under the surface
