@@ -6613,6 +6613,13 @@ def _lane_runs(line, room):
     return [(pts[a:b], float(d)) for a, b, d in zip(starts[:-1], starts[1:], before)]
 
 
+def aux_section(feats, i):
+    """Whether road i is a lane section with an auxiliary lane (lanesections.profile's extra): extras' aux."""
+    import lanesections
+    prof = lanesections.profile(feats, i)
+    return bool(prof and prof["extra"])
+
+
 def section_lines(ex, feats, i, spec, pts, frame, lon, left_hand, country, ws):
     """Keep through-lane spacing while the outside auxiliary lane opens/closes.
 
@@ -6636,14 +6643,15 @@ def section_lines(ex, feats, i, spec, pts, frame, lon, left_hand, country, ws):
 
 
 def extras(spec, pts, lon, left_hand=False, country=None, osm=None, ws=None, shift=None, defer_dashes=False, phase=0.,
-           lane_growth=None):
+           lane_growth=None, aux=False):
     """The sidewalk / gutter / marking polylines of one road: [(look dict with m / tl / p, width, pts)].
     pts: its centreline (k, 3) in the anchor frame (a whole ground part: its broken lines' dashes start their cycle at
     its start, so they meet across tiles); lon: its longitude; country: ISO code (markings.style: the country's line
     colours, widths and dash patterns; by longitude when unknown); osm: OpenStreetMap's lane tags of the road
     (railtags.LANE_COLUMNS: the lines lane by lane, markings.lane_plan); ws: its width at each point of pts where
     it tapers (taper_widths: its edges, curbs and lane lines follow); shift: its lines' shift (m, + left) at
-    each point at a merge or split (shift_at: its markings only). Pure."""
+    each point at a merge or split (shift_at: its markings only); aux: a lane section whose tapers open or close an
+    auxiliary lane (aux_section: its shoulders its spec's along them). Pure."""
     import markings
     from europewalks import LOW_EDGE_HEIGHT
     out = []
@@ -6735,7 +6743,10 @@ def extras(spec, pts, lon, left_hand=False, country=None, osm=None, ws=None, shi
     # (tapered: the lanes' lines spread with the driving width; a highway's shoulders are its drawn width's, as its
     # deck's are at the deck's width: from the spec's width a 12 m motorway tapering into a 14 m deck kept 2 m
     # shoulders, the deck had 3 m, and its edge lines stepped 1.5 m at the joint)
-    hw = ws is not None and highway_shoulders(spec)
+    # (a lane section's taper opens or closes an auxiliary lane, its other lanes and shoulders as they were: from its
+    # drawn width a 3-lane section at its 2-lane neighbour's 14 m had 1 m shoulders against the neighbour's 3 m, its
+    # white edge line 3 m off at the joint, I-70 at Washington PA)
+    hw = ws is not None and highway_shoulders(spec) and not aux
     off0 = driving_offset(spec, wv) if hw else driving_offset(spec)
     scale = 1.0 if ws is None else np.maximum((wv - 2 * edge_margin(spec, None, wv)) if hw else drive + (wv - w),
                                               0.5) / max(drive, 0.5)
@@ -11207,7 +11218,7 @@ def _bridge_chunks(frame, bseen, elev, exact, bridges=None, cells=None, walks=No
         import lanesections
         tags = lane_tags(*got[0]) if got else None
         ex = extras(spec, pts, lon, left_hand, country, tags, ws, defer_dashes=True,
-                    phase=lanesections.phase(*got[0]) if got else 0.)
+                    phase=lanesections.phase(*got[0]) if got else 0., aux=bool(got) and aux_section(*got[0]))
         return section_lines(ex, *got[0], spec, pts, frame, lon, left_hand, country, ws) if got else ex
 
     if bridges is not None:
@@ -12605,7 +12616,7 @@ def build_tile(frame, tx, ty, cells, elev, urban_fn=None, walks=None, bridges=No
         import lanesections
         phase = lanesections.phase(*seen[fid][:2]) if fid in seen else 0.
         ex = extras(spec, pts, lon, left_hand, line_country, lane_tags(*seen[fid][:2]) if fid in seen else None, ws,
-                    sh, defer_dashes=True, phase=phase) if fid not in jinternal or fid in whole else []    # inside a junction: none
+                    sh, defer_dashes=True, phase=phase, aux=fid in seen and aux_section(*seen[fid][:2])) if fid not in jinternal or fid in whole else []    # inside a junction: none
         if fid in jinternal:                    # (a through road's piece between two close junctions: its lines only)
             ex = [e for e in ex if e[0].get("kind")]
         if not ex:

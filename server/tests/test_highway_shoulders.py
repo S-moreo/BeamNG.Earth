@@ -81,6 +81,19 @@ class HighwayShouldersTest(unittest.TestCase):
                 self.assertEqual(lines(ground, np.array([ground_w, (ground_w + deck_w) / 2, deck_w])), lines(deck))
                 self.assertEqual(lines(ground, np.full(3, ground_w)), lines(ground))     # (untapered: as before)
 
+    def test_an_auxiliary_lane_taper_keeps_the_shoulders(self):
+        # a 3-lane section (lanesections) narrowing to its 2-lane neighbour's 14 m at the joint: the edge lines meet
+        # the neighbour's (its spec's shoulders); from the drawn width the white edge stepped 3 m (I-70, Washington PA)
+        pts = np.array([[0., 0., 0.], [50., 0., 0.], [100., 0., 0.]])
+        sec = roads.Spec(18., 'paved', False, 'motorway', True, dir=1, lanes=3)
+        nb = sec._replace(width=14., lanes=2)
+
+        def edges(sp, ws=None, aux=False):
+            return sorted((look.get('side'), round(float(p[-1, 1]), 4))
+                          for look, w, p in roads.extras(sp, pts, -80., country='US', ws=ws, aux=aux)
+                          if look.get('kind') == 'edge' and p[-1, 0] > 99.)
+        self.assertEqual(edges(sec, np.array([18., 16., 14.]), aux=True), edges(nb))
+
 
 if __name__=='__main__':
     unittest.main()
