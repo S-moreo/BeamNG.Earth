@@ -1440,9 +1440,8 @@ def build(frame, chunks, elev, origin, lift=0.0, clip=None, follow=False, q=None
     out =(P - np.asarray(origin, np.float64), T, UV, mats, M)
     if not asphalt and not dirt:
         return out
-    # a strip in the mesh: the fade uv for every point (a sixth element: write, plazas.merge), and the strips' materials
-    # first, so the markings and anything else translucent in the mesh draw over them (one primitive per material, in
-    # the list's order)
+    # a strip in the mesh: the fade uv for every point (a sixth element: write, plazas.merge), and the draw order (one
+    # primitive per material, in the list's order: _draw_rank)
     vr = np.full(len(P), -1, np.int64)
     vr[T.ravel()] = np.repeat(RI, 3)
     fade = _fade_uv(UV, vr, rpar)
@@ -1452,11 +1451,27 @@ def build(frame, chunks, elev, origin, lift=0.0, clip=None, follow=False, q=None
         blend = (weight * weight) * (3 - 2 * weight)
         out[0][used, 2] -= (LIFT["frontage"] + lift - .001) * (1 - blend)
         fade[used] = np.c_[.001 + .499 * weight, np.full(len(used), .5)]
-    order = sorted(range(len(mats)), key=lambda j: (not (mats[j].startswith(FADE_PREFIX)
-                                                        or mats[j] == FRONTAGE_ASPHALT), j))
+    order = sorted(range(len(mats)), key=lambda j: (_draw_rank(mats[j]), j))
     remap = np.empty(len(mats), np.int64)
     remap[order] = np.arange(len(mats))
     return out[0], T, UV, [mats[j] for j in order], remap[np.asarray(M, np.int64)], fade
+
+
+WEAR_STRIP_PREFIX = "bne_wear_"             # roadwear's strips (tyre polish, crack networks)
+WEAR_OVER_STRIPS = ("bne_spot_", "bne_crack_line")   # roadwear's spots and crack lines, drawn over the strips
+
+
+def _draw_rank(m):
+    """A material's place in a strip mesh's draw order: the dirt strips and the frontage asphalt first, so the
+    markings and anything else translucent draw over them; then the road and its paint; then the wear strips over the
+    paint (the user, 2026-11-19: "the tire marks are supposed to go over the crosswalks": real wheel paths wear the
+    paint too; the strips write depth, and the paint 0.2 mm under them is no depth test apart, so the order decides);
+    then the wear spots and crack lines over the strips."""
+    if m.startswith(WEAR_STRIP_PREFIX):
+        return 2
+    if m.startswith(WEAR_OVER_STRIPS):
+        return 3
+    return 0 if m.startswith(FADE_PREFIX) or m == FRONTAGE_ASPHALT else 1
 
 
 def _quads(base, k, row_a, row_b):
