@@ -104,12 +104,12 @@ FADE_V_BAND = 0.25
 # WEAR_NOISE_TAPER_M past their fades. The points lie every DRAPE_STEP along, so no point is added; the same map, one
 # sample, so no texture either. _WEAR_RAMP: the opacity map's ramp below FADE_V_BAND (dirt_fade_o, measured), opacity
 # -> v.
-WEAR_NOISE = float(os.environ.get("BNE_WEAR_NOISE", "0.45"))
+WEAR_NOISE = float(os.environ.get("BNE_WEAR_NOISE", "0.7"))
 WEAR_NOISE_M = (7.0, 2.5)
 WEAR_NOISE_TAPER_M = 6.0
-WEAR_NOISE_FROM = 0.5       # (the noise's lower half left solid: lighter patches in the strip as it was, not the whole
+WEAR_NOISE_FROM = 0.3       # (the noise's lowest part left solid: lighter patches in the strip as it was, not the whole
                             # strip lighter with a solid collar where the noise tapers off at its ends)
-_WEAR_RAMP = ((0.52, 0.71, 0.86, 0.965, 1.0), (0.129, 0.160, 0.191, 0.223, FADE_V_BAND))
+_WEAR_RAMP = ((0.17, 0.38, 0.52, 0.71, 0.86, 0.965, 1.0), (0.066, 0.098, 0.129, 0.160, 0.191, 0.223, FADE_V_BAND))
 
 
 def round_dirt_centerline(pts, half):
