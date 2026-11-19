@@ -783,6 +783,32 @@ fn centre_gap(a: ArrayView2<f64>, b: ArrayView2<f64>, gap1: f64) -> f64 {
     if beside.is_empty() { np_median(&d) } else { np_median(&beside) }
 }
 
+/// Whether b runs on from a or a from b: an end of one on the other's start (within RUNS_ON_M) and both heading the
+/// same way there.
+fn runs_on(a: ArrayView2<f64>, b: ArrayView2<f64>) -> bool {
+    const RUNS_ON_M: f64 = 1.0;
+    let (na, nb) = (a.nrows(), b.nrows());
+    if na < 2 || nb < 2 {
+        return false;
+    }
+    let near = |p: usize, q: &ArrayView2<f64>, k: usize| (a[[p, 0]] - q[[k, 0]]).hypot(a[[p, 1]] - q[[k, 1]]) <= RUNS_ON_M;
+    // the heading at an end: from the end to the first point at least 1 cm away
+    let head = |l: &ArrayView2<f64>, start: bool| -> [f64; 2] {
+        let n = l.nrows();
+        let (e, rng): (usize, Vec<usize>) = if start { (0, (1..n).collect()) } else { (n - 1, (0..n - 1).rev().collect()) };
+        for k in rng {
+            let (dx, dy) = (l[[k, 0]] - l[[e, 0]], l[[k, 1]] - l[[e, 1]]);
+            if dx.hypot(dy) >= 0.01 {
+                return if start { [dx, dy] } else { [-dx, -dy] };
+            }
+        }
+        [0.0, 0.0]
+    };
+    let same = |u: [f64; 2], v: [f64; 2]| u[0] * v[0] + u[1] * v[1] > 0.0;
+    (near(0, &b, nb - 1) && same(head(&a, true), head(&b, false)))
+        || (near(na - 1, &b, 0) && same(head(&a, false), head(&b, true)))
+}
+
 /// dual_carriageways on specs (in place): returns, per feature, what changed: 0 nothing, 1 the width (a nameless
 /// pair capped), 2 the median and width (a one-way carriageway), 3 one-way, dir, width and median.
 fn dual(l: &Layer, rules: &RoadRules, prm: &Prm, specs: &mut [Option<Sp>], european: bool, left_hand: bool)
@@ -833,6 +859,7 @@ fn dual(l: &Layer, rules: &RoadRules, prm: &Prm, specs: &mut [Option<Sp>], europ
         for (ti, &i) in idx.iter().enumerate() {
             let si = input[i].as_ref().unwrap();
             let mut best: Option<(f64, usize, f64)> = None;      // (side, j, gap)
+            let mut best_on: Option<(f64, usize, f64)> = None;   // ... of the roads running on from it
             for (tj, &j) in idx.iter().enumerate() {
                 if i == j {
                     continue;
@@ -843,19 +870,20 @@ fn dual(l: &Layer, rules: &RoadRules, prm: &Prm, specs: &mut [Option<Sp>], europ
                     if european && rules.has(si.cls, F_TERTIARY) && !(si.oneway && sj.oneway) && l.eu_country[i] {
                         continue;
                     }
+                    // a highway running on from this one (end to end, the same way: the next lane section of one
+                    // road) lies beside its end only: a twin only when no other road runs beside this one (I-70 at
+                    // Washington PA: a 44 m section paired with the section before it, 0.03 m "apart", not with the
+                    // other carriageway 23 m off, and capped to DUAL_MIN_W). Twins that meet at a split node run
+                    // opposite ways there. (Town streets keep the nearest: a boulevard's next piece held to a
+                    // carriageway's width, Paris's Porte Maillot in the drivability ratchet)
                     let gap = centre_gap(view(ti), view(tj), prm.dual_gap1);
-                    // no twin nearer than DUAL_GAP_M[0]: a road's own next piece (a lane section ending where this
-                    // one starts) runs on from it, its points beside this one's end only (I-70 at Washington PA: a
-                    // 44 m section paired with the deck before it at 0.03 m, capped to DUAL_MIN_W)
-                    if gap < prm.dual_gap0 {
-                        continue;
-                    }
-                    if best.is_none() || gap < best.unwrap().2 {
-                        best = Some((side, j, gap));
+                    let slot = if rules.has(si.cls, F_HW) && runs_on(view(ti), view(tj)) { &mut best_on } else { &mut best };
+                    if slot.is_none() || gap < slot.unwrap().2 {
+                        *slot = Some((side, j, gap));
                     }
                 }
             }
-            let Some((side, bj, gap)) = best else { continue };
+            let Some((side, bj, gap)) = best.or(best_on) else { continue };
             let sp = specs[i].clone().unwrap();
             if key.0 < 0 {
                 let other = input[bj].as_ref().unwrap();
