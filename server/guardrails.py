@@ -471,6 +471,9 @@ def _deck_segments(decks):
 # split at a bridge (CT 72 under High Street, its lower part layer=-1 and not among the ground roads) its piece's end
 # looks like a dead end, and two modules stood in its lanes.
 RAIL_CLEAR_M = 0.25             # m a rail across a road's line keeps clear of its carriageway's edge
+GAP_PUSH = 2.0                  # a median barrier d m on a lane goes 2 d m out of it, at most to the gap's middle: the
+                                # middle for one well on the lane (#1025), and no jump where two ramps part and it
+                                # leaves the lane bit by bit (the I-70 loop at Washington, PA, 2026-11-18)
 LANE_CENTER_M = 1.5             # m of the centre line that stays put: a median, not a side rail drawn in the lane
 CROSS_SAMPLES = 7               # points along a module checked
 
@@ -594,16 +597,41 @@ def _shift_to_edge(a, b, road):
     return _moved(a, b, target, road["origin"], road["unit"])
 
 
+def _shift_ends(a, b, road, rsegs):
+    """_shift_to_edge with each end moved as far as a module centred on it would be: where the move changes along the
+    run (a median leaving a lane as two ramps part, a side rail on a bend) the modules follow it as one line instead
+    of stepping from one to the next. A module that is not moved stays as it is."""
+    na, nb = _shift_to_edge(a, b, road)
+    if road is None or (np.array_equal(na, a) and np.array_equal(nb, b)):
+        return na, nb
+    half = 0.5 * (b - a)
+    out = []
+    for p, moved in ((a, na), (b, nb)):
+        probe = _along_road(p - half, p + half, rsegs)
+        if probe is None:
+            out.append(moved)
+            continue
+        pa, pb = _shift_to_edge(p - half, p + half, probe)
+        out.append(p + 0.5 * ((pa - (p - half)) + (pb - (p + half))))
+    return out[0], out[1]
+
+
 def _to_gap(a, b, gap, lat, origin, unit):
-    """A median barrier (a, b) on either carriageway's lanes moved to the middle of the gap between their edges, or of
-    their overlap (gap: (this one's half width, the other's edge from this one's line, the barrier's distance past the
-    other's edge); lat: its signed offset from this one's line). One between them already stays."""
+    """A median barrier (a, b) on either carriageway's lanes moved out of them by GAP_PUSH times as far as it was on
+    them, at most to the middle of the gap between their edges (to the middle of their overlap where they overlap)
+    (gap: (this one's half width, the other's edge from this one's line, the barrier's distance past the other's
+    edge); lat: its signed offset from this one's line). One between them already stays."""
     if gap is None:
         return a, b
     e1, e2, d_other = gap
-    if abs(lat) >= e1 - 0.05 and d_other >= -0.05:
+    x, half_gap = abs(lat), 0.5 * (e2 - e1)
+    if e1 - x > 0.05:                   # on this one's lanes
+        target = e1 + min(half_gap, GAP_PUSH * (e1 - x))
+    elif d_other < -0.05:               # on the other's
+        target = e2 - min(half_gap, GAP_PUSH * -d_other)
+    else:
         return a, b
-    return _moved(a, b, math.copysign(0.5 * (e1 + e2), lat), origin, unit)
+    return _moved(a, b, math.copysign(target, lat), origin, unit)
 
 
 def _moved(a, b, target, origin, unit):
@@ -1012,7 +1040,7 @@ def _mapped_forest_rows(frame, infra_fn, exact, elev, decks=(), parapets=(), bri
                             if shifts is not None:
                                 mode = "join"
                     if mode == "ground":
-                        source_a, source_b = _shift_to_edge(source_a, source_b, road)
+                        source_a, source_b = _shift_ends(source_a, source_b, road, rsegs)
                     elif mode == "median":                 # (off either deck's lanes, #1025)
                         source_a, source_b = _to_gap(source_a, source_b, rel["gap"], rel["slat"], rel["origin"],
                                                      rel["unit"])
