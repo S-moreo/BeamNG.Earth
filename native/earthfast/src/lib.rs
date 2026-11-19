@@ -7,6 +7,7 @@
 #![deny(clippy::disallowed_methods, clippy::disallowed_types, clippy::iter_over_hash_type)]
 use crate::dm::Dm;
 mod dm;
+mod deckreach;
 mod demsample;
 mod dmmatmul;
 mod devctx;
@@ -112,6 +113,7 @@ mod railpiers;
 mod bdtopo;
 mod nycmassing;
 mod rooftop;
+mod bldmesh;
 mod specs;
 mod gsrows;
 mod places;
@@ -127,6 +129,7 @@ mod vegclumps;
 mod roadwear;
 mod roadtone;
 mod railbeds;
+mod railprof;
 mod raildrawn;
 mod railindex;
 mod railnode;
@@ -7348,6 +7351,29 @@ fn earthfast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // flagged, no record; three more params)
     m.add_function(wrap_pyfunction!(roadshape::sheet::deck_sheets, m)?)?;
     // 514: v2 P2b (roadshape::sheet::deck_sheets: exits off bridges as one deck, BNE_ROADSHAPE=sheet)
-    m.add("VERSION", 514)?;
+    // 515: v2 P2c (deck_sheets: the union ends where the heights part when the edges' split fails the height tests)
+    m.add_function(wrap_pyfunction!(roadshape::profile::profile_members, m)?)?;
+    m.add_function(wrap_pyfunction!(roadshape::profile::profile_solve, m)?)?;
+    m.add_function(wrap_pyfunction!(roadshape::pins::profile_pin_field, m)?)?;
+    // 516: v2 P3a (roadshape::profile: the stretches from anchor to anchor through a chain's decks and their joint
+    // height solve, shadow only, BNE_ROADSHAPE=profile)
+    // 521: v2 P3b (roadshape::pins::profile_pin_field: the joint profile's approach ground into the graded ground)
+    bldmesh::register(m)?;
+    // 519: the full Rust port's r2a19 (bldmesh: buildings.Mesh as BldMesh, the box-frame roofs, lids, cornices, boxes,
+    // stoops, signs and roof-clutter boxes of buildings.build); 516-518 are other branches'
+    // 524: try598 with 521 (P3b) and 519 (r2a19) merged; 522-523 are other branches'
+    m.add_function(wrap_pyfunction!(deckreach::deck_stations, m)?)?;
+    m.add_function(wrap_pyfunction!(deckreach::deck_reach, m)?)?;
+    // 518: deckreach::deck_reach (a slab's reach along each deck part's whole line, at fixed stations: the tiles either
+    // side of a seam agree on it), on 516 (P3a); 517 is another branch's
+    // 526: try598 with 524 and 518 (deckreach) merged; 525 is another branch's
+    // 523: v2 P3c (profile_pin_field: each approach's pin weight local to its own line and abutment)
+    // 529: try598 with 526 and 523 (P3c) merged; 525, 527, 528 are other branches'
+    m.add_function(wrap_pyfunction!(railprof::rail_profile, m)?)?;
+    m.add_function(wrap_pyfunction!(railprof::rail_approach_rays, m)?)?;
+    // 525: the full port's railways.profile (railprof: the beds, the decks' approach levels, the underpasses'
+    // clearance and the decks run out along the track in one call; the ground stays the caller's)
+    // 530: try598 with 529 and 525 (r2a20) merged; 527-528 are other branches'
+    m.add("VERSION", 530)?;
     Ok(())
 }
