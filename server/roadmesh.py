@@ -51,7 +51,8 @@ WEAR_TOL = float(os.environ.get("BNE_WEAR_TOL", "0.02"))
 # The road revamp v2's surface overlays (P1c, BNE_SURFACE_V2; .claude/work/road-revamp-v2-road-shape-first-2026-11-19.md
 # section 2.7 and its addendum): the stock maps' markings float ~5 mm over their road (Italy's mesh lines 4.9 mm p50),
 # so the overlays here sit a few mm up, markings 5 mm, tyre wear 4 mm, edge blends 2.5 mm, the surface variation
-# (roadwear.surface_chunks) 3 mm; the mesh's draw order does the layering (their materials write no depth: v2_rank).
+# (roadwear.surface_chunks) 3 mm; the mesh's draw order does the layering (v2_rank: the strips' materials write depth
+# since 2026-11-19, as the stock road decals do, else they take no sun shadow; the spots and crack lines write none).
 # An overlay triangle the ground follow leaves whole is raised where the drawn ground bulges inside it, so the ground
 # stays MARK_MIN_M under every overlay (follow_ground's clear: with fewer rows than the terrain the paint sagged into it,
 # 6.9 mm deep at Fells Point with the 2 mm lift, markprobe.py); cutting those triangles along the terrain's instead was
