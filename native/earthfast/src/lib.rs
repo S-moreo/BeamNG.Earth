@@ -7348,6 +7348,8 @@ fn earthfast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // flagged, no record; three more params)
     m.add_function(wrap_pyfunction!(roadshape::sheet::deck_sheets, m)?)?;
     // 514: v2 P2b (roadshape::sheet::deck_sheets: exits off bridges as one deck, BNE_ROADSHAPE=sheet)
-    m.add("VERSION", 514)?;
+    // 515: RoadRules reads MOTORWAY_SHOULDER_M (a motorway carriageway's shoulders, apart from SHOULDER_M, the shoulder
+    // a mapped width's right-of-way test allows: roads.MOTORWAY_SHOULDER_M, the user 2026-11-19)
+    m.add("VERSION", 515)?;
     Ok(())
 }

@@ -40,6 +40,18 @@ def lane_offsets(f, i, spec, pts, section=False):
     return [(float(p[:, 1].mean()), float(np.ptp(p[:, 1])), look, w, p) for look, w, p in ex if look.get("kind") == "lane"]
 
 
+def lines_at(ys, tol=.2):
+    """The lateral offsets of the lines among dash offsets ys: each run of offsets less than tol apart, by its mean (a
+    line's dashes vary by a few cm along a resampled curve; rounding them split one line at x.x5)."""
+    out = []
+    for y in sorted(ys):
+        if out and y - out[-1][-1] < tol:
+            out[-1].append(y)
+        else:
+            out.append([y])
+    return [sum(g) / len(g) for g in out]
+
+
 def enu(f, i):
     ll = f.parts(i)[0][0]
     e, n, _ = FRAME.geodetic_to_enu(ll[:, 1], ll[:, 0], 0.)
@@ -104,7 +116,7 @@ class LaneSections(unittest.TestCase):
                     ws = roads.taper_widths(sp[1].width, tp, ll[:, 0], ll[:, 1])
                     self.assertAlmostEqual(ws[0], sp[0].width)
                     self.assertAlmostEqual(ws[-1], sp[1].width)
-                    through = sorted({round(y, 1) for y, *_ in lane_offsets(f, 0, sp[0], enu(f, 0)[1])})
+                    through = lines_at(y for y, *_ in lane_offsets(f, 0, sp[0], enu(f, 0)[1]))
                     self.assertEqual(len(through), 2)
                     ex = roads.extras(sp[1], pts, -76., country="DE", ws=ws)
                     ex = roads.section_lines(ex, f, 1, sp[1], pts, FRAME, -76., False, "DE", ws)
@@ -305,7 +317,7 @@ class LaneCountVariants(unittest.TestCase):
             tags['placement'] = (f'middle_of:{(base + 1) // 2}' if base % 2 else f'right_of:{base // 2}')
             out = lanesections.split(f, FRAME)
             specs = roads.road_specs(out)
-            through = sorted({round(y, 1) for y, *_ in lane_offsets(out, 0, specs[0], enu(out, 0)[1])})
+            through = lines_at(y for y, *_ in lane_offsets(out, 0, specs[0], enu(out, 0)[1]))
             self.assertEqual(len(through), base - 1)
             _ll, pts = enu(out, 1)
             for left_hand in (False, True):
@@ -372,7 +384,7 @@ class ConsecutiveWidening(unittest.TestCase):
         spec = roads.road_specs(out)[1]
         _ll, pts = enu(out, 1)
         got = lane_offsets(out, 1, spec, pts, section=True)
-        ys = sorted({round(y, 1) for y, *_ in got})
+        ys = lines_at(y for y, *_ in got)
         outer = [p for y, _r, _l, _w, p in got if abs(y - ys[0]) < .12]
         self.assertTrue(outer)
         self.assertGreaterEqual(min(p[:, 0].min() for p in outer), pts[0, 0] + 44.)

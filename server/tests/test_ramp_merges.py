@@ -366,7 +366,7 @@ class MergeTest(unittest.TestCase):
                 before=roads.lane_shifts(f)
                 p=rampmerges.ground(frame,[f])[0]
                 self.assertTrue(p['lane_continuation'])
-                self.assertGreater(p['span'][0],3.9)
+                self.assertGreater(p['span'][0],roads.LANE_W['motorway']-.1)
                 self.assertEqual(before,roads.lane_shifts(f))
                 i=2 if entry else 1
                 sp=roads.road_specs(f)[i]

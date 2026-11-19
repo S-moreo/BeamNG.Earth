@@ -87,6 +87,7 @@ pub struct RoadRules {
     link_lane: f64,
     link_m: Vec<(i64, f64)>,
     shoulder: f64,
+    motorway_shoulder: f64,     // a motorway carriageway's mean shoulder (shoulder: a mapped width's test)
     shoulder_wide: f64,
     shoulder_wide_lanes: f64,
     parking: f64,
@@ -134,7 +135,7 @@ impl RoadRules {
             };
         }
         if built && fl & F_MOTORWAY != 0 && oneway {
-            let x = lt(lanes).unwrap_or(2.0) * r.lw_or(self.lane_w_default) + 2.0 * self.shoulder;
+            let x = lt(lanes).unwrap_or(2.0) * r.lw_or(self.lane_w_default) + 2.0 * self.motorway_shoulder;
             return match rule_w.filter(|v| truthy(*v)) {
                 Some(v) => if x > v { (x, false) } else { (v, true) },
                 None => (pmax(0.0, x), false),
@@ -160,7 +161,7 @@ impl RoadRules {
         }
         if let Some(l) = lanes_t {
             if !urban && oneway && fl & F_MOTORWAY != 0 {
-                return (w + 2.0 * (if l >= self.shoulder_wide_lanes { self.shoulder_wide } else { self.shoulder }), false);
+                return (w + 2.0 * (if l >= self.shoulder_wide_lanes { self.shoulder_wide } else { self.motorway_shoulder }), false);
             }
         }
         if urban && !oneway && !r.ua.is_nan() && lanes_t.is_none() {
@@ -171,7 +172,7 @@ impl RoadRules {
         }
         if !urban && fl & F_SERVICE == 0 {
             if oneway && fl & F_MOTORWAY != 0 {
-                return (self.motorway_rural + 2.0 * self.shoulder, false);
+                return (self.motorway_rural + 2.0 * self.motorway_shoulder, false);
             }
             return (w + 2.0 * (if r.es.is_nan() { self.edge_strip } else { r.es }), false);
         }
@@ -988,7 +989,8 @@ impl RoadRules {
             index: names.iter().enumerate().map(|(k, v)| (v.clone(), k)).collect(), names, rows,
             other: ClassRow { w: other_w, ow: f64::NAN, lw: f64::NAN, ua: f64::NAN, es: f64::NAN, flags: 0 },
             lane_w_default: g("LANE_W_DEFAULT")?, link_shoulder: g("LINK_SHOULDER_M")?, link_lane: g("LINK_LANE_M")?,
-            link_m, shoulder: g("SHOULDER_M")?, shoulder_wide: g("SHOULDER_WIDE_M")?,
+            link_m, shoulder: g("SHOULDER_M")?, motorway_shoulder: g("MOTORWAY_SHOULDER_M")?,
+            shoulder_wide: g("SHOULDER_WIDE_M")?,
             shoulder_wide_lanes: g("SHOULDER_WIDE_LANES")?, parking: g("PARKING_M")?,
             motorway_rural: g("MOTORWAY_RURAL_M")?, edge_strip: g("EDGE_STRIP_M")?, ring_lane: g("RING_LANE_M")?,
             ring_extra_lane: g("RING_EXTRA_LANE_M")?, ring_small_r: g("RING_SMALL_R_M")?,

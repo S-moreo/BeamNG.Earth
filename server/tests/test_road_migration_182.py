@@ -66,7 +66,7 @@ class IntegrationTest(unittest.TestCase):
         self.assertEqual(roadlanes.generated_counts(f), [4, None, None])
         sp = roads.bridge_specs(f)[2]
         self.assertEqual(sp.lanes, 5)
-        self.assertEqual(sp.width, 26.)
+        self.assertAlmostEqual(sp.width, 5 * roads.LANE_W["motorway"] + 2 * roads.MOTORWAY_SHOULDER_M)
         self.assertEqual(roads._structure_width(f, 2), sp.width)
 
 

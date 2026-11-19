@@ -30,7 +30,7 @@ OPENING_M = 4.0         # m kept clear around any other road's pavement (crossov
 MAPPED_REACH_M = 1.5    # m: a mapped barrier this near the median's barrier line (or within half the median) stands for it
 MODULE_M = 3.0          # m: the models' length (the stock jersey barrier, the cable module, Italy's rail)
 EDGE_ALLOW_M = 0.15     # m of a paired carriageway's drawn edge (outside its edge line) the barrier may stand on ...
-SHOULDER_KEEP_M = 0.5   # ... or of its shoulder less this
+SHOULDER_KEEP_M = 0.5   # ... or of its inside shoulder less this
 WIDE_LANES = 3          # lanes a direction (or, unmapped, WIDE_M of carriageway): a rebuilt six-lane motorway
 WIDE_M = 14.0
 
@@ -149,7 +149,7 @@ def modules(roads_near, box, left_hand=False, country=None, mapped_rows=(), deck
         half.append(float(spec.width) / 2)
         flags.append(f)
         keys.append(_key(fid, xy))
-        allow.append(max(EDGE_ALLOW_M, roadsmod.edge_margin(spec) - SHOULDER_KEEP_M) if f & 1 else 0.0)
+        allow.append(max(EDGE_ALLOW_M, roadsmod.edge_margin(spec, spec.dir or 1) - SHOULDER_KEEP_M) if f & 1 else 0.0)
     if not any(f & 1 for f in flags):
         return np.zeros((0, 11), np.float64)
     fast.require(99, "median_modules")

@@ -380,7 +380,7 @@ class BuildTileTest(unittest.TestCase):
         n, rural = lanes("motorway", False)
         self.assertEqual(n, 2, "rural motorway carriageway")
         drive = 2 * roads.LANE_W["motorway"]
-        self.assertAlmostEqual(rural.width, drive + 2 * roads.SHOULDER_M)
+        self.assertAlmostEqual(rural.width, drive + 2 * roads.MOTORWAY_SHOULDER_M)
         edges = [line[0][1] for look, w, line in roads.extras(rural, pts, -100.0) if look.get("kind") == "edge"]
         self.assertEqual(sorted(round(abs(y - roads.driving_offset(rural)), 2) for y in edges), [round(drive / 2, 2)] * 2,
                          "edge lines between the lanes and the shoulders")

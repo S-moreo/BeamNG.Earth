@@ -15,6 +15,8 @@ import railtags  # noqa: E402
 import roads  # noqa: E402
 from test_roads import FRAME, LAT, LON, M_LAT, M_LON, features, flat, rules  # noqa: E402
 
+W = roads.LANE_W["motorway"]      # a motorway lane: a placement moves the line by lanes of it
+
 
 def spec(cls="motorway", width=18.0, d=1, oneway=True, link=False, lanes=3):
     return roads.Spec(width, "paved", False, cls, oneway, 2.5, d, None, None, None, lanes, None, link)
@@ -41,11 +43,11 @@ def feature(length=200.0, parts=None):
 
 class RuleTest(unittest.TestCase):
     def test_rules(self):
-        for value, lanes, want in (("right_of:1", 3, 2.0), ("right_of:1", 2, 0.0), ("right_of:1", 4, 4.0),
-                                   ("middle_of:2", 3, 0.0), ("middle_of:1", 2, 2.0), ("left_of:1", 2, 4.0),
-                                   ("right_of:2", 3, -2.0), ("right_of:9", 3, -6.0)):
+        for value, lanes, want in (("right_of:1", 3, .5), ("right_of:1", 2, 0.0), ("right_of:1", 4, 1.0),
+                                   ("middle_of:2", 3, 0.0), ("middle_of:1", 2, .5), ("left_of:1", 2, 1.0),
+                                   ("right_of:2", 3, -.5), ("right_of:9", 3, -1.5)):   # (lanes of W)
             with self.subTest(value=value, lanes=lanes):
-                self.assertAlmostEqual(roads.placement_full(tags(value, lanes), spec(lanes=lanes)), want)
+                self.assertAlmostEqual(roads.placement_full(tags(value, lanes), spec(lanes=lanes)), want * W)
 
     def test_no_shift(self):
         self.assertEqual(roads.placement_full(tags("right_of:1", 3), spec(link=True)), 0.0)
@@ -58,15 +60,15 @@ class RuleTest(unittest.TestCase):
 
     def test_lanes_from_the_spec(self):
         """No lanes on the part: the spec's count."""
-        self.assertAlmostEqual(roads.placement_full(tags("right_of:1"), spec(lanes=3)), 2.0)
+        self.assertAlmostEqual(roads.placement_full(tags("right_of:1"), spec(lanes=3)), W / 2)
 
     def test_trunk_lane_width(self):
         self.assertAlmostEqual(roads.placement_full(tags("right_of:1", 3), spec(cls="trunk", width=17.4)), 1.9)
 
     def test_shift_capped_inside_the_pavement(self):
-        self.assertAlmostEqual(roads.placement_full(tags("right_of:1", 3), spec(width=10.0)), 2.0)
-        self.assertAlmostEqual(roads.placement_full(tags("right_of:9", 3), spec(width=18.0)), -6.0)
-        self.assertAlmostEqual(roads.placement_full(tags("right_of:9", 3), spec(width=12.0)), -4.0)
+        self.assertAlmostEqual(roads.placement_full(tags("right_of:1", 3), spec(width=10.0)), W / 2)
+        self.assertAlmostEqual(roads.placement_full(tags("right_of:9", 3), spec(width=18.0)), -1.5 * W)
+        self.assertAlmostEqual(roads.placement_full(tags("right_of:9", 3), spec(width=12.0)), -(12.0 - W) / 2)    # (capped: the line stays on the asphalt)
 
 
 class ShiftTest(unittest.TestCase):
@@ -80,7 +82,7 @@ class ShiftTest(unittest.TestCase):
         """right_of:1 on 3 lanes, eastbound along its geometry: 2 m to the right, -2 in offset_polyline's sign."""
         f, xs, lon, lat = feature(parts=[(0.0, 1.0, tags("right_of:1", 3))])
         sh = roads.placement_shift(f, 0, lon, lat, spec())
-        np.testing.assert_allclose(sh, -2.0, atol=1e-9)
+        np.testing.assert_allclose(sh, -W / 2, atol=1e-9)
 
     def test_reversed_geometry(self):
         f, xs, lon, lat = feature(parts=[(0.0, 1.0, tags("right_of:1", 3))])
@@ -92,15 +94,14 @@ class ShiftTest(unittest.TestCase):
         np.testing.assert_allclose(roads.placement_shift(f2, 0, lon, lat, spec(d=-1)), along)
 
     def test_joint_delta(self):
-        """A joint at x = 0 whose delta is +1 over 48 m (the mean of -2 and a 2-lane neighbour's 0, less -2): -1 at the
-        joint, the full -2 past 48 m, and with the width's taper to 16 m there the left (median) edge W(s)/2 + shift
-        where it was all along."""
+        """A joint at x = 0 whose delta is +1 over 48 m: 1 - W / 2 at the joint, the full -W / 2 past 48 m, and with the
+        width's taper to 16 m there the left (median) edge W(s)/2 + shift where it was all along."""
         f, xs, lon, lat = feature(parts=[(0.0, 1.0, tags("right_of:1", 3))])
         sh = roads.placement_shift(f, 0, lon, lat, spec(), ((LON, LAT, 48.0, 1.0),))
         ws = roads.taper_widths(18.0, ((LON, LAT, 16.0, 48.0),), lon, lat)
-        self.assertAlmostEqual(sh[0], -1.0, places=6)
-        np.testing.assert_allclose(sh[xs >= 50.0], -2.0, atol=1e-9)
-        np.testing.assert_allclose(ws / 2 + sh, 7.0, atol=1e-6)
+        self.assertAlmostEqual(sh[0], 1.0 - W / 2, places=6)
+        np.testing.assert_allclose(sh[xs >= 50.0], -W / 2, atol=1e-9)
+        np.testing.assert_allclose(ws / 2 + sh, 9.0 - W / 2, atol=1e-6)
 
     def test_joint_moves_an_unplaced_feature(self):
         """The 2-lane neighbour: no shift of its own, -1 at the joint while it widens to 16 m, its left edge at 7."""
@@ -127,9 +128,9 @@ class ShiftTest(unittest.TestCase):
         f, xs, lon, lat = feature(400.0, parts=[(0.0, 0.5, tags(None, 3)), (0.5, 1.0, tags("right_of:1", 3))])
         sh = roads.placement_shift(f, 0, lon, lat, spec())
         self.assertAlmostEqual(sh[0], 0.0)
-        self.assertAlmostEqual(sh[-1], -2.0)
+        self.assertAlmostEqual(sh[-1], -W / 2)
         self.assertTrue((np.diff(sh) <= 1e-9).all())
-        moving = xs[(sh < -1e-6) & (sh > -2.0 + 1e-6)]
+        moving = xs[(sh < -1e-6) & (sh > -W / 2 + 1e-6)]
         self.assertGreaterEqual(moving.min(), 200.0 - 40.0 - 1e-6)
         self.assertLessEqual(moving.max(), 200.0 + 40.0 + 1e-6)
 
@@ -249,9 +250,9 @@ class TileTest(unittest.TestCase):
         for a, b, x in (("eA", "eB", -150.0), ("eB", "eC", 150.0)):
             ya, yb = at_x(rows, a, x)[0], at_x(rows, b, x)[0]
             self.assertAlmostEqual(ya, yb, delta=0.05, msg=(a, b))
-            self.assertAlmostEqual(ya, -7.7, delta=0.05, msg=(a, b))
+            self.assertAlmostEqual(ya, -6.7 - W / 4, delta=0.05, msg=(a, b))
         self.assertAlmostEqual(at_x(rows, "eA", -250.0)[0], -6.7, delta=0.05)
-        self.assertAlmostEqual(at_x(rows, "eB", 0.0)[0], -8.7, delta=0.05)
+        self.assertAlmostEqual(at_x(rows, "eB", 0.0)[0], -6.7 - W / 2, delta=0.05)
         self.assertAlmostEqual(at_x(rows, "eC", 250.0)[0], -6.7, delta=0.05)
 
     def test_one_width_joint_eased(self):
@@ -264,7 +265,7 @@ class TileTest(unittest.TestCase):
                       + [at_x(rows, "eB", x)[0] for x in np.arange(-150.0, -40.0, 2.0)])
         self.assertLess(float(np.abs(np.diff(ys)).max()), 0.15, ys)
         self.assertAlmostEqual(ys[0], -6.7, delta=0.05)
-        self.assertAlmostEqual(ys[-1], -8.7, delta=0.05)
+        self.assertAlmostEqual(ys[-1], -6.7 - W / 2, delta=0.05)
 
     def test_shift_from_the_joints_own_cell(self):
         cells = carriageways(cells=2)
@@ -319,7 +320,7 @@ class ConsumersTest(unittest.TestCase):
             la, lo, _ = FRAME.enu_to_geodetic(np.zeros(len(ys)), ys, 0.0)
             d = np.abs(np.asarray(g.apply(la, lo, np.full(len(ys), 30.0)), np.float64) - 30.0)
             return float(ys[np.argmax(d > 0.5 * float(d.max()))])      # (the southmost point graded half way)
-        self.assertAlmostEqual(south_side(False) - south_side(True), 2.0, delta=0.1)
+        self.assertAlmostEqual(south_side(False) - south_side(True), W / 2, delta=0.1)
 
     def test_traffic_lanes_follow(self):
         """navgraph's nodes on the placed piece 2.0 m south of where they are unplaced (its other pieces' as they
@@ -333,7 +334,7 @@ class ConsumersTest(unittest.TestCase):
         moved = [b[k][1] - a[k][1] for k in a if k.startswith("seB_") and k in b]
         kept = [b[k][1] - a[k][1] for k in a if k.startswith("seA_") and k in b]
         self.assertTrue(moved and kept)
-        np.testing.assert_allclose(moved, -2.0, atol=0.1)
+        np.testing.assert_allclose(moved, -W / 2, atol=0.1)
         np.testing.assert_allclose(kept, 0.0, atol=1e-6)
 
     def test_sign_pavements_follow(self):
@@ -346,12 +347,12 @@ class ConsumersTest(unittest.TestCase):
             got = [(fid, sp, line, None) for fid, sp, line, _w in rows if fid == "eB"]
             self.assertTrue(got)
             return y_of(got, "eB", 0.0)
-        self.assertAlmostEqual(line_y(False) - line_y(True), 2.0, delta=0.1)
+        self.assertAlmostEqual(line_y(False) - line_y(True), W / 2, delta=0.1)
 
     def test_deck_moves_with_its_road(self):
         """A deck tagged as its road: shifted as the road is at the abutment (-2 m, both); one without a placement
         stands, and the placed road runs to it (0 at the abutment)."""
-        for deck_placed, want in ((True, -2.0), (False, 0.0)):
+        for deck_placed, want in ((True, -W / 2), (False, 0.0)):
             f = east_with_deck(deck_placed)
             place = roads.placement_context([f])
             end = f.parts(0)[0][0][-1]
@@ -395,7 +396,7 @@ class ConsumersTest(unittest.TestCase):
             return np.sort((cross[:, 1] + cross[:, 3]) / 2)
         a, b = rows_at_0(False), rows_at_0(True)
         self.assertEqual(len(a), 2)
-        np.testing.assert_allclose(b - a, [-2.0, 2.0], atol=0.1)    # (westbound north, eastbound south)
+        np.testing.assert_allclose(b - a, [-W / 2, W / 2], atol=0.1)    # (westbound north, eastbound south)
 
     def test_ground_material_follows(self):
         """surface.paint_roads (the terrain's material under the wheels): the placed carriageway's asphalt reaches 2 m
@@ -411,7 +412,7 @@ class ConsumersTest(unittest.TestCase):
             col = out[:, n // 2]
             paved = np.nonzero(col == sf.ASPHALT)[0]
             return float(n / 2 - paved.max())           # (m north of the middle; rows run south)
-        self.assertAlmostEqual(south_edge(False) - south_edge(True), 2.0, delta=0.6)
+        self.assertAlmostEqual(south_edge(False) - south_edge(True), W / 2, delta=0.6)
 
     def test_ramp_paint_follows(self):
         """rampmerges.ground (the US exit-lane paint) at the placed piece's exit: its lane goes on into the ramp as
@@ -461,10 +462,10 @@ class ReviewTest(unittest.TestCase):
         place = roads.placement_context([f])
         ring = place.ring(FRAME, f, 0, roads.ground_parts(f, 0)[0], roads.road_specs(f)[0], "eA")
         self.assertAlmostEqual(line_y(ring, -325.0), -6.7, delta=0.05)
-        self.assertAlmostEqual(line_y(ring, -150.0), -7.7, delta=0.05)
+        self.assertAlmostEqual(line_y(ring, -150.0), -6.7 - W / 4, delta=0.05)
         g = east([("eM", 0.0, 400.0, [(0.0, 0.3, THREE), (0.3, 0.7, PLACED), (0.7, 1.0, THREE)], 2)])
         ring = roads.placement_context([g]).ring(FRAME, g, 0, roads.ground_parts(g, 0)[0], roads.road_specs(g)[0])
-        self.assertAlmostEqual(line_y(ring, 200.0), -8.7, delta=0.05)
+        self.assertAlmostEqual(line_y(ring, 200.0), -6.7 - W / 2, delta=0.05)
         self.assertAlmostEqual(line_y(ring, 20.0), -6.7, delta=0.05)
 
     def test_placement_rows_follow_lane_enrichment(self):
@@ -485,7 +486,7 @@ class ReviewTest(unittest.TestCase):
         f.attrs[railtags.lane_attr("placement")] = np.array(["right_of:1"], object)
         f.attrs["osm_oneway"] = np.array(["-1"], object)
         sh = roads.placement_shift(f, 0, lon, lat, spec(d=-1))
-        np.testing.assert_allclose(sh, -2.0, atol=1e-9)
+        np.testing.assert_allclose(sh, -W / 2, atol=1e-9)
 
     def test_lane_shifts_kept_where_the_part_is_unplaced(self):
         """The exit at the 3-lane piece's end, only its first 30 % placed: the joint's part is unplaced, so its lane
@@ -509,7 +510,7 @@ class ReviewTest(unittest.TestCase):
             sh = place.shift(f, 0, [ring[end, 0]], [ring[end, 1]], sp, "eB")
             self.assertAlmostEqual(float(sh[0]), 0.0, delta=0.05, msg=(end, ring[end]))
         lon0, lat0 = rings[0][0]
-        self.assertAlmostEqual(float(place.shift(f, 0, [lon0], [lat0], sp, "eB")[0]), -2.0, delta=0.05)
+        self.assertAlmostEqual(float(place.shift(f, 0, [lon0], [lat0], sp, "eB")[0]), -W / 2, delta=0.05)
         mid = f.parts(0)[0][0][30]                      # (x = 0, inside the tunnel: the AI's line there too)
         self.assertAlmostEqual(float(place.shift(f, 0, [mid[0]], [mid[1]], sp, "eB")[0]), 0.0, delta=0.05)
 

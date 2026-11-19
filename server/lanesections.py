@@ -57,7 +57,7 @@ def _cols(f):
             a.get("class"), f.rules.get("oneway"), f.rules.get("subclass"), a.get("subclass"), a.get("osm_lanes"),
             a.get(railtags.lane_attr("lanes")), a.get(railtags.LANE_PARTS),
             {str(k): float(v) for k, v in roads.LANE_W.items()}, float(roads.LANE_W_DEFAULT),
-            (float(roads.SHOULDER_M), float(roads.SHOULDER_WIDE_M), int(roads.SHOULDER_WIDE_LANES)))
+            (float(roads.MOTORWAY_SHOULDER_M), float(roads.SHOULDER_WIDE_M), int(roads.SHOULDER_WIDE_LANES)))
 
 
 def _joint_specs(f):

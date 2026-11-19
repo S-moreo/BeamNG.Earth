@@ -302,12 +302,13 @@ PARKING_M = 2.3
 # with three, GitHub #43) between paved shoulders, the edge line along each. Untagged urban highways also get two.
 # Overture has no lane counts.
 MOTORWAY_RURAL_M = 7.3
+SHOULDER_M = 3.0          # m: the shoulder each side a mapped width may hold before it is a right-of-way (width_rejected)
 # a motorway carriageway's mean shoulder: edge_margin puts half of it on the inside (median) and 1.5 x on the outside,
 # 1.05 m and 3.15 m (US Interstates 4 ft and 10 ft, the UK's 1.0 m hard strip and 3.3 m hard shoulder, Germany's
-# 0.75 m and 3.0 m; the user 2026-11-19: 4.5 m outside read as an extra lane)
-SHOULDER_M = 2.1
-SHOULDER_WIDE_M = 2.1     # m: a motorway carriageway of SHOULDER_WIDE_LANES lanes or more (lanesplit's grid takes the
-SHOULDER_WIDE_LANES = 3   # same split, so it stays the mean of 1:3 shoulders; was 10 ft both sides on I-95, 2026-10-31)
+# 0.75 m and 3.0 m; the user 2026-11-19: SHOULDER_M's 1.5 m / 4.5 m, the outer one read as an extra lane)
+MOTORWAY_SHOULDER_M = 2.1
+SHOULDER_WIDE_M = 2.1     # m: ... of SHOULDER_WIDE_LANES lanes or more (lanesplit's grid takes the same 1:3 split, so
+SHOULDER_WIDE_LANES = 3   # it stays a mean; was 10 ft both sides from three lanes, I-95 by the Middle Branch, 2026-10-31)
 PARKING_CLASSES = {"residential", "tertiary", "secondary", "unclassified", "living_street"}
 EDGE_STRIP_M = 1.0
 # ... by class where measured narrower: rural minor roads' paved width on the official aerials (PEMA 6-inch, Lancaster
@@ -2258,7 +2259,7 @@ def edge_margin(spec, side=None):
     """Shoulder/edge-strip metres. side is +1 left or -1 right of the geometry.
 
     One-way highways: half the mean shoulder (motorway_shoulder) on the inside, 1.5 x on the outside (1.05 / 3.15 m
-    at SHOULDER_M); ramps .875 / 2.625 m. No side requests their mean for lane_layout.
+    at MOTORWAY_SHOULDER_M); ramps .875 / 2.625 m. No side requests their mean for lane_layout.
     """
     if highway_shoulders(spec):
         base = motorway_shoulder(spec)
@@ -2279,7 +2280,7 @@ def motorway_shoulder(spec):
     """Mean shoulder outside the mapped travel lanes, bounded by the configured width."""
     lane = LINK_LANE_M if spec.link else LANE_W.get(spec.cls, LANE_W_DEFAULT)
     count = spec.lanes or (1 if spec.link and spec.oneway else 2)
-    cap = LINK_SHOULDER_M if spec.link else SHOULDER_WIDE_M if count >= SHOULDER_WIDE_LANES else SHOULDER_M
+    cap = LINK_SHOULDER_M if spec.link else SHOULDER_WIDE_M if count >= SHOULDER_WIDE_LANES else MOTORWAY_SHOULDER_M
     return float(np.clip((spec.width - count * lane) / 2, 0., cap))
 
 
@@ -3648,7 +3649,8 @@ def _road_rules():
     if got is None:
         import fast
         import roadlanes
-        fast.require(260, "RoadRules")      # (260: URBAN_HIGHWAY_BESIDE_M; 228: the regional gravel rule's built-up-beside test)
+        fast.require(515, "RoadRules")      # (515: MOTORWAY_SHOULDER_M; 260: URBAN_HIGHWAY_BESIDE_M; 228: the regional
+                                            # gravel rule's built-up-beside test)
         names = list(STYLE)
         nan = float("nan")
         tab = np.array([[STYLE[c][0], ONEWAY_STYLE.get(c, nan), LANE_W.get(c, nan), URBAN_ARTERIAL.get(c, nan),
@@ -3656,7 +3658,7 @@ def _road_rules():
                          c in DUAL_CLASSES, c in MOUNTAIN_CLASSES, c in REGIONAL_CLASSES, c in SE_GRAVEL_CLASSES,
                          c in SE_NO_STRIPS] for c in names], np.float64)
         prm = {"LANE_W_DEFAULT": LANE_W_DEFAULT, "LINK_SHOULDER_M": LINK_SHOULDER_M, "LINK_LANE_M": LINK_LANE_M,
-               "SHOULDER_M": SHOULDER_M, "SHOULDER_WIDE_M": SHOULDER_WIDE_M,
+               "SHOULDER_M": SHOULDER_M, "MOTORWAY_SHOULDER_M": MOTORWAY_SHOULDER_M, "SHOULDER_WIDE_M": SHOULDER_WIDE_M,
                "SHOULDER_WIDE_LANES": float(SHOULDER_WIDE_LANES), "PARKING_M": PARKING_M,
                "MOTORWAY_RURAL_M": MOTORWAY_RURAL_M, "EDGE_STRIP_M": EDGE_STRIP_M, "RING_LANE_M": RING_LANE_M,
                "RING_EXTRA_LANE_M": RING_EXTRA_LANE_M, "RING_SMALL_R_M": RING_SMALL_R_M,

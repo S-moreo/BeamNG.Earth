@@ -214,7 +214,8 @@ class HighwayLanesTest(unittest.TestCase):
         f = highway()
         osmtags.join(f, {1: {"lanes": 3, "width": 14.0}})
         sp = roads.road_specs(f)[0]
-        self.assertEqual((sp.width, sp.lanes), (18., 3))  # preserve three travel lanes and both highway shoulders
+        self.assertEqual(sp.lanes, 3)       # preserve three travel lanes and both highway shoulders
+        self.assertAlmostEqual(sp.width, 3 * roads.LANE_W["motorway"] + 2 * roads.MOTORWAY_SHOULDER_M)
         self.assertIsNone(roads.road_specs(highway(cls="residential", direction=0))[0].lanes)
         ring = highway()
         ring.attrs["osm_junction"] = np.array(["roundabout"])
