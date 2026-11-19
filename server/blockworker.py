@@ -1637,6 +1637,9 @@ def _tile_parts(mark, frame, tile, zoom, g, buildings, left_hand, mph, gas_stati
     town_faces = {}                     # the town signs' faces the tile's props use (towns_on)
     towns = (town_signs(frame, tx, ty, out_dir, vfs_dir, town_faces)
              if towns_on and props is not None and out_dir is not None else None)
+    import roadshape
+    if roadshape.SHEET:     # (road revamp v2 P2a: the tile's cells' fork records beside the build, shadow only)
+        roadshape.shadow_forks(cell_keys, cell_fn, _s.cache_dir)
     chunks = roadsmod.build_tile(frame, tx, ty, cells, elev, urban, walks=walks, deck_context=ctx, bridges=bridges, widths=_s.widths,
                                  sign_obstacles=sign_obstacles,
                                  # (the stations' made-up driveways: no sidewalk across them; nor along a square's
@@ -1694,6 +1697,10 @@ def _tile_parts(mark, frame, tile, zoom, g, buildings, left_hand, mph, gas_stati
         props.extend(buildingsmod.toll_booth_rows(items, x0, y0))
         drives.extend(buildingsmod.garage_drives(items, lines, x0, y0))
         chunks += drives
+        if drives and roadsmod._sw_v2():    # (sidewalks v2: a lowered kerb and apron where a house's drive crosses)
+            roadsmod.walk_drive_ranges(walks, drives)
+            if walks_raw is not None:
+                roadsmod.walk_drive_ranges(walks_raw, drives)
         park = parkingmod.clear_of(park, props, drives)
         park = parkingmod.tile_lot_spots(frame, tx, ty, _s.md, elev, items, park, separate_bays=bool(frontage_country))
         front_grass = [] if _s.surface is not None else None
@@ -2406,6 +2413,23 @@ def _map_chunks(src, dst, chunks):
         v = m[at:at + ln, :max(2, min(cols, 3))]
         at += ln
         out[k][field] = v if field == "n" else v.tolist()
+    # (roadshape, BNE_ROADSHAPE=decks: a shaped deck's skewed end lines turned with the frames through their end node,
+    # its buried ends' overlap lines mapped as its nodes are; Codex review)
+    for k, c in enumerate(chunks):
+        for e, at in ((0, 0), (1, -1)):
+            d, ov = c.get(f"sk{e}"), c.get(f"ov{e}")
+            if d is None and ov is None:
+                continue
+            p = np.asarray(c["n"], np.float64)[at]
+            if d is not None:
+                q = geotiles.world_map(src, dst, np.array([[p[0], p[1], 0.0],
+                                                           [p[0] + 10.0 * d[0], p[1] + 10.0 * d[1], 0.0]]))
+                v = q[1, :2] - q[0, :2]
+                ln = float(np.sqrt(v[0] * v[0] + v[1] * v[1]))
+                out[k][f"sk{e}"] = [round(float(v[0] / ln), 6), round(float(v[1] / ln), 6)] if ln > 1e-12 else d
+            if ov is not None:
+                o = np.asarray(ov, np.float64)
+                out[k][f"ov{e}"] = geotiles.world_map(src, dst, np.c_[o[:, :2], np.zeros(len(o))])[:, :2].tolist()
     return out
 
 
@@ -2441,7 +2465,15 @@ def _map_walks(src, dst, walks):
             c["inward"] = inw / np.maximum(dnp.hypot(*inw.T), 1e-12)[:, None]
             wk["corner"] = c
         else:
-            wk["pts"] = mp(wk["pts"])
+            src_pts = np.asarray(wk["pts"], np.float64)
+            wk["pts"] = mp(src_pts)
+            if wk.get("end_n") is not None:     # (sidewalks v2: a bent end's mitre: at the mapped end, turned)
+                ends = []
+                for i, e in zip((0, -1), wk["end_n"]):
+                    ok = e is not None and float(dnp.hypot(*(src_pts[i, :2] - np.asarray(e[0])[:2]))) < 1e-6
+                    ends.append((np.asarray(wk["pts"][i, :2], np.float64).copy(),
+                                 dnp.matmul(np.asarray(e[1], np.float64)[:2], r2.T)) if ok else None)
+                wk["end_n"] = tuple(ends)
         out.append(wk)
     return out
 

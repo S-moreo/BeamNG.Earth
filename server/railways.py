@@ -894,17 +894,18 @@ def _pieces_of(feats, i, rngs):
     if 1.0 - at > min_part:
         ground.append((at, 1.0))
     out = {"ground": [], "bridge": [], "tunnel": []}
-    for part in feats.parts(i):
-        for ring in part:
-            if len(ring) < 2:
-                continue
-            for kind, spans in (("ground", ground), ("bridge", [(a, b) for a, b, k in off if k == "bridge"]),
-                                ("tunnel", [(a, b) for a, b, k in off if k == "tunnel"] if TUNNELS_ON else [])):
-                for a, b in spans:
-                    if b - a > min_part:
-                        r = ring if (a, b) == (0.0, 1.0) else roads.sub_polyline(ring, a, b)
-                        if len(r) >= 2:
-                            out[kind].append(r)
+    pieces, kinds = [], []
+    for kind, spans in (("ground", ground), ("bridge", [(a, b) for a, b, k in off if k == "bridge"]),
+                        ("tunnel", [(a, b) for a, b, k in off if k == "tunnel"] if TUNNELS_ON else [])):
+        for a, b in spans:
+            if b - a > min_part:
+                pieces.append((a, b))
+                kinds.append(kind)
+    rings = [ring for part in feats.parts(i) for ring in part if len(ring) >= 2]
+    # (every ring's pieces in one native call, ring by ring as before)
+    for r, kind in zip(roads.sub_polylines(rings, pieces), kinds * len(rings)):
+        if len(r) >= 2:
+            out[kind].append(r)
     return list(out.items())
 
 
@@ -916,6 +917,7 @@ def crossings(frame, cells, box, reach=REACH_M):
         if feats is None or len(feats) == 0:
             continue
         specs = roads.road_specs(feats)
+        rings, halves = [], []      # (the cell's rings converted in one call)
         for i in _box_hits(feats.boxes(frame), near):
             sp = specs[i]
             fid = str(feats.ids[i])
@@ -923,8 +925,10 @@ def crossings(frame, cells, box, reach=REACH_M):
                 continue
             seen.add(fid)
             for ring in roads.ground_parts(feats, i):
-                e, n = mapgeom.enu_xy(feats, frame, ring)
-                out.append((np.column_stack((e, n)), sp.width / 2))
+                rings.append(ring)
+                halves.append(sp.width / 2)
+        if rings:
+            out += zip(mapgeom.enu_rings(feats, frame, rings), halves)
     return out
 
 
@@ -951,9 +955,7 @@ def walk_cut_lines(frame, cells, box, reach=60.0):
             for kind, rings in _pieces(feats, i):
                 if kind != "ground":
                     continue
-                for ring in rings:
-                    e, n = mapgeom.enu_xy(feats, frame, ring)
-                    xy = np.column_stack((e, n))
+                for xy in mapgeom.enu_rings(feats, frame, rings):
                     if len(xy) >= 2 and _box_hit((xy[:, 0].min(), xy[:, 1].min(), xy[:, 0].max(), xy[:, 1].max()),
                                                  near):
                         out.append((xy, WALK_CLEAR_M))
@@ -1008,6 +1010,7 @@ def motorway_crossings(frame, cells, box, reach=REACH_M):
             big = np.ones(len(feats), bool) if sub is None else _is(sub, ("road",))
         if not big.any():
             continue
+        rings, rest = [], []        # (the cell's rings converted in one call)
         for i in _box_hits(feats.boxes(frame), near, big):
             c = str(clss[i])
             base = c[:-5] if c.endswith("_link") else c
@@ -1019,9 +1022,12 @@ def motorway_crossings(frame, cells, box, reach=REACH_M):
             if st is None or roads.unbuilt(feats, i):
                 continue
             for ring in roads.ground_parts(feats, i):
-                e, n = mapgeom.enu_xy(feats, frame, ring)
-                if len(e) >= 2:
-                    out.append((np.column_stack((e, n)), st[0] / 2.0, base))
+                rings.append(ring)
+                rest.append((st[0] / 2.0, base))
+        if rings:
+            for xy, (half, base) in zip(mapgeom.enu_rings(feats, frame, rings), rest):
+                if len(xy) >= 2:
+                    out.append((xy, half, base))
     return out
 
 
