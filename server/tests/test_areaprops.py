@@ -326,12 +326,20 @@ class PlacesTest(unittest.TestCase):
                                ("d", mapgeom.POLYGON, [rect(0, 0, 10, 10)], "camp_site",
                                 {"tourism": "camp_site", "caravans": "yes"}),
                                ("e", mapgeom.POLYGON, [rect(0, 0, 10, 10)], "camp_site",
-                                {"tourism": "camp_site", "tents": "yes"})])
+                                {"tourism": "camp_site", "tents": "yes"}),
+                               # (OpenStreetMap's Green Ridge State Forest: camping allowed in it, not a campground)
+                               ("f", mapgeom.POLYGON, [rect(0, 0, 10, 10)], "forest",
+                                {"tourism": "camp_site", "caravans": "yes", "boundary": "protected_area",
+                                 "leisure": "nature_reserve", "backcountry": "yes"}),
+                               ("g", mapgeom.POLYGON, [rect(0, 0, 10, 10)], "park",
+                                {"tourism": "caravan_site", "leisure": "park"})])
         self.assertEqual(places.kind_of(f, 0, "land_use"), "terminal")
         self.assertEqual(places.kind_of(f, 1, "land_use"), "caravan_site")
         self.assertIsNone(places.kind_of(f, 2, "land_use"))
         self.assertEqual(places.kind_of(f, 3, "land_use"), "caravan_site")
         self.assertIsNone(places.kind_of(f, 4, "land_use"))
+        self.assertIsNone(places.kind_of(f, 5, "land_use"))
+        self.assertIsNone(places.kind_of(f, 6, "land_use"))
 
 
 if __name__ == "__main__":

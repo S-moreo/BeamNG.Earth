@@ -96,6 +96,15 @@ CARAVAN_LEN, CARAVAN_W = 8.47, 3.13
 NA_HOME_SCALE = 1.35            # a North American park's single-wide (~11.4 x 4.2 m) from the same caravan
 TRAILER_PITCH = (4.0, 11.0)     # m beside each other (lots ~12 m wide) and m between rows (with its yard)
 CARAVAN_SITE_KEEP = 0.45        # a caravan site's pitches with a caravan on them
+# A camp site or caravan site tag on a protected area, a park or a forest says camping is allowed somewhere in it, not
+# that it is a campground: OpenStreetMap's Green Ridge State Forest (Maryland, ~190 km2, boundary=protected_area,
+# leisure=nature_reserve, tourism=camp_site, caravans=yes, backcountry=yes) filled the whole forest with caravans (the
+# user in game, 2026-11-21 at 39.672 N, 78.456 W: "why are there so many campers"). Such a feature is not a site; and
+# a piece of a site bigger than CARAVAN_SITE_MAX_M2 (a campground's mapped outline is a few hectares, the biggest a
+# few tens) is not one either (a land use is clipped per cell, so this is the backstop for tags not listed here).
+NOT_A_SITE = {"boundary": ("protected_area", "national_park"), "leisure": ("nature_reserve", "park"),
+              "landuse": ("forest",), "natural": ("wood",), "backcountry": ("yes",)}
+CARAVAN_SITE_MAX_M2 = 500000.0
 TRAILER_ROAD_M = 2.0
 TRAILER_BLD_M = 1.5
 TRAILER_MIN_M2 = 2000.0
@@ -190,8 +199,9 @@ def kind_of(feats, i, layer):
         return "marina"
     if t.get("residential") == "trailer_park" or t.get("landuse") == "trailer_park":
         return "trailer"
-    if t.get("tourism") == "caravan_site" or (t.get("tourism") == "camp_site" and (
-            t.get("caravans") == "yes" or t.get("static_caravans") in ("yes", "only"))):
+    if (t.get("tourism") == "caravan_site" or (t.get("tourism") == "camp_site" and (
+            t.get("caravans") == "yes" or t.get("static_caravans") in ("yes", "only")))) \
+            and not any(t.get(k) in v for k, v in NOT_A_SITE.items()):
         return "caravan_site"
     if layer == "land_use" and (cls == "construction" and t.get("landuse", "construction") == "construction"):
         return "construction"
@@ -748,6 +758,8 @@ def trailer_rows(frame, places, box, elev, seg, blds, country, md=None):
         pitch = (size[1] + TRAILER_PITCH[0], size[0] + TRAILER_PITCH[1])
         for fid, pts, off, b, tags in places.get(kind, ()):
             if not _meets(box, b) or _area(pts, off) < TRAILER_MIN_M2:
+                continue
+            if kind == "caravan_site" and _area(pts, off) > CARAVAN_SITE_MAX_M2:
                 continue
             if md is None or _park_built(frame, md, fid, pts, off):
                 continue
