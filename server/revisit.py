@@ -464,9 +464,10 @@ def keyed_env(k):
 # two points inside the mapped edges plus half the rule, 1 the rule alone. Neither had a version at first, and a
 # place driven with the switch on kept that try's plans through the next ones (found 2026-11-21: the roads north of
 # Bakers Ridge Road, Morgantown, driven on try 1, still banked 10 % on try 2).
+# BNE_RURAL_BANK 4: the road read every 0.75 m across at every other sample, the land's lean alone on lidar.
 SWITCH_VERSIONS = {"BNE_LEVEL_SPACING": 5, "BNE_FAST_DECK_GROUND": 2, "BNE_UNDER_SPEED": 2, "BNE_FAST_GAP": 5,
                    "BNE_RACEWAY_DIG": 2, "BNE_DIRT_BUMP": 2, "BNE_DIRT_BANK": 2, "BNE_DECK_STRUCT": 5,
-                   "BNE_ROADSHAPE": 9, "BNE_DECK_SKEW": 1, "BNE_ROAD_FOLLOW": 2, "BNE_RURAL_BANK": 3}
+                   "BNE_ROADSHAPE": 9, "BNE_DECK_SKEW": 1, "BNE_ROAD_FOLLOW": 2, "BNE_RURAL_BANK": 4}
 
 
 def keyed_value(k, v):
