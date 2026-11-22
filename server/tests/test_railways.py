@@ -573,6 +573,21 @@ class RailwayTest(unittest.TestCase):
         self.assertEqual(railways.drawn(f, 1), ("standard_gauge", 2))
         self.assertEqual(railways.drawn(f, 2), ("standard_gauge", 0), "a street running track in use is drawn")
 
+    def test_abandoned_lines_hidden_with_the_switch(self):
+        """BNE_RAIL_ABANDONED=hide: an abandoned line (OSM's tag or Overture's flag: its rails gone) is not built, on
+        the ground or as a bridge (the Hilliards Branch through Boyers PA, 2026-11-22); a disused one and a line in
+        use are drawn as before."""
+        f = features([[(0.0, 100.0), (250.0, 100.0)], [(0.0, 120.0), (250.0, 120.0)], [(0.0, 140.0), (250.0, 140.0)],
+                      [(0.0, 160.0), (250.0, 160.0)]],
+                     ["standard_gauge", "unknown", "standard_gauge", "standard_gauge"], subtypes=["rail"] * 4,
+                     flags=[(1, "is_abandoned"), (2, "is_disused")])
+        f.attrs["osm_railway"] = np.array(["abandoned", None, None, "rail"], object)
+        self.assertEqual(railways.drawn(f, 0), ("standard_gauge", 2), "worn, by default")
+        with mock.patch.object(railways, "ABANDONED_HIDE", True):
+            got = [railways.drawn(f, i) for i in range(4)] + [railways.drawn(f, i, bridges=True) for i in (0, 1)]
+        self.assertEqual(got, [None, None, ("standard_gauge", 1), ("standard_gauge", 0), None, None])
+        self.assertEqual(railways.drawn(f, 1), ("standard_gauge", 2), "the switch is part of the layer's memo")
+
     def test_drawn_follows_columns_added_after_a_first_ask(self):
         """drawn() keeps a layer's answers (earthfast.rail_drawn_cols) only while its columns are the same: the OSM
         tags railtags.py attaches later, or a new flags table, decide the next ask."""

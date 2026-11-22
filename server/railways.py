@@ -84,6 +84,12 @@ FOOT_CLEAR = os.environ.get("BNE_FOOT_CLEAR", "off") == "on"
 # lines across country roads in South Wales, Rheinland-Pfalz, Indiana). BNE_RAIL_LIFECYCLE=on; off by default until
 # reviewed in game (a disused street track, as Fells Point's trolley lines, then stops at every street it crosses).
 RAIL_LIFECYCLE = os.environ.get("BNE_RAIL_LIFECYCLE", "off") == "on"
+# Abandoned railways (wear 2: OSM's railway=abandoned, Overture's is_abandoned) not built at all with
+# BNE_RAIL_ABANDONED=hide: OSM tags a line abandoned once its rails are gone (what is left is the old bed, often a road,
+# a trail or nothing), yet the worn track was laid along it with its level crossings, its bed cleared of buildings and
+# the roads it crosses separated over it: the Hilliards Branch through Boyers PA ran as a railway through the town
+# (Smore's report, 2026-11-22). Disused lines (wear 1: rails still in place) are drawn as before.
+ABANDONED_HIDE = os.environ.get("BNE_RAIL_ABANDONED", "worn") == "hide"
 # Railway-at-road fixes (the user's in-game reports r63 / r64 / r92, 2026-11-17; the Revamped roads switch set): a track
 # that ends at a road with its line going on beyond it (a worn line cut at the road, a siding mapped up to each side of
 # a paved-over crossing) gets no buffer stop there (dead_ends, _road_ends); a level crossing is one record per track
@@ -824,7 +830,7 @@ def _drawn_cols(feats):
     other side of half a line, the same answer as every other install."""
     a, t = feats.attrs, feats.rules.get("flags")
     src = (a.get("subtype"), a.get("class"), a.get("osm_railway"), a.get("osm_highway"), t,
-           *((t.feature, t.start, t.end, t.value) if t is not None else ()), RAIL_LIFECYCLE)
+           *((t.feature, t.start, t.end, t.value) if t is not None else ()), RAIL_LIFECYCLE, ABANDONED_HIDE)
     got = feats.__dict__.get("_rail_drawn")
     if got is not None and len(got[0]) == len(src) and all(x is y for x, y in zip(got[0], src)):
         return got[1]
@@ -835,6 +841,10 @@ def _drawn_cols(feats):
         fl = (np.ascontiguousarray(t.feature, np.int64), np.ascontiguousarray(t.start, np.float64),
               np.ascontiguousarray(t.end, np.float64), _str_rows(t.value))
     plain, br, w = fast._ef.rail_drawn_cols(len(feats), *(_str_rows(c) for c in src[:4]), fl, RAIL_LIFECYCLE)
+    if ABANDONED_HIDE:
+        gone = w == 2                   # (abandoned: drawn()'s wear)
+        plain[gone] = -1
+        br[gone] = -1
     cols = (plain.tolist(), br.tolist(), w.tolist())
     feats.__dict__["_rail_drawn"] = (src, cols)
     return cols
