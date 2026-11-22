@@ -78,6 +78,22 @@ CLASS_SIGMA_M = {"secondary": 25.0, "tertiary": 20.0, "unclassified": 16.0, "res
 # over a road is a spike a few samples wide, and the Gaussian spread it into a hump in the road under (GitHub #271, an
 # 8.5 m spike near Thetford: a 3.2 m hump). Slopes, crests and steps longer than the window stay.
 MEDIAN_M = float(os.environ.get("BNE_GRADE_MEDIAN", "24"))
+# Roads that follow the land (the user, 2026-11-21: "hills and dips are too flattened"): the smoothing above was sized
+# for the coarse and noisy elevation models; on lidar (USGS 3DEP and the national lidar models: a bare-earth surface
+# already smooth along a road) it took the road's real crests and dips out with the noise. A Gaussian of sigma s keeps
+# exp(-2 pi^2 s^2 / L^2) of a crest-to-crest wave L long: at 20 m (a tertiary road) a 100 m dip kept 45 % of its depth,
+# at 40 m (a primary road) a 200 m one 45 %; at FOLLOW_CLASS_SIGMA_M's 9 and 14 m, 85 % and 90 %. Motorways and trunks
+# keep SIGMA_MAJOR_M (built to long, gentle grades). The median shrinks to FOLLOW_MEDIAN_M so a crest or dip at least
+# half that long stays. One switch for every caller (the chains', the pins', l0roads' profile_sigma): pieces of one
+# road planned in other calls still smooth alike. On the coarse global model the roads ride more of its noise: a
+# switch for lidar places. BNE_ROAD_FOLLOW=on (the settings page's "Roads follow the land").
+FOLLOW_ON = os.environ.get("BNE_ROAD_FOLLOW", "off") == "on"
+FOLLOW_CLASS_SIGMA_M = {"primary": 14.0, "secondary": 11.0, "tertiary": 9.0, "unclassified": 8.0,
+                        "residential": 7.0, "service": 6.0, "living_street": 6.0}
+FOLLOW_LINK_SIGMA_M = 8.0   # a slip road's (SIGMA_M otherwise)
+FOLLOW_MEDIAN_M = 12.0
+if FOLLOW_ON:
+    MEDIAN_M = min(MEDIAN_M, FOLLOW_MEDIAN_M)
 DIRT_MEDIAN_M = 10.0        # (tracks keep their small real bumps)
 RAIL_GRADE_ON = os.environ.get("BNE_RAIL_GRADE", "1") != "0"    # the ground laid to the railways' bed (railways.py)
 RAIL_TAG = "rail:"
@@ -1158,7 +1174,7 @@ def plan_roads(frame, parts, elev, abut=None, ext=None, pins=None, cuts=True, co
         # banking on xy alone puts a partial curvature window at every map
         # segment end, even where the longitudinal profile is continuous.
         thr = (False, False)
-        if bank_through is not None and (ab[0] or ab[1]) and BANK_ON and spec.cls in BANK_DESIGN:
+        if bank_through is not None and (ab[0] or ab[1]) and bank_design(spec) is not None:
             thr = (bool(ab[0] and bank_through(xy[0])), bool(ab[1] and bank_through(xy[-1])))
         if ab[0] and not thr[0]:
             bank_before = bank_before[:0]
@@ -1306,9 +1322,12 @@ def profile_sigma(spec, coarse=False):
             # minor dirt roads rode the elevation data's metre noise: IRI 1.5-2.3 against 0.6-1.2, Norfolk, Latvia)
             return max(SIGMA_M, CLASS_SIGMA_M.get(spec.cls, SIGMA_M))
         return DIRT_SIGMA_MINOR_M        # a track keeps more of the ground's own shape
-    if spec.cls in MAJOR_CLASSES and not getattr(spec, "link", False):
+    link = getattr(spec, "link", False)
+    if FOLLOW_ON and spec.cls not in ("motorway", "trunk"):
+        return FOLLOW_LINK_SIGMA_M if link else FOLLOW_CLASS_SIGMA_M.get(spec.cls, FOLLOW_CLASS_SIGMA_M["service"])
+    if spec.cls in MAJOR_CLASSES and not link:
         return max(SIGMA_M, SIGMA_MAJOR_M)
-    return max(SIGMA_M, CLASS_SIGMA_M.get(spec.cls, SIGMA_M)) if not getattr(spec, "link", False) else SIGMA_M
+    return max(SIGMA_M, CLASS_SIGMA_M.get(spec.cls, SIGMA_M)) if not link else SIGMA_M
 
 
 # strength of a minor dirt road's damage (1: as below). Off by default: its 3-4 cm potholes every ~5 m across the
@@ -1535,6 +1554,44 @@ BANK_SIGMA_M = 12.0         # remove discrete box-window steps in cross slope, n
 # trunk, about 190 m across) was banked 8 % into the ring as a trunk's curve; the real one falls 2.4-2.9 % outward (the
 # Estonian lidar). Rings are graded level across. BNE_RING_LEVEL=off: banked as before.
 RING_LEVEL_ON = os.environ.get("BNE_RING_LEVEL", "on") != "off"
+# Banked rural curves (the user, 2026-11-21: "aggressive camber typically seen on rural roads/streets"): the country
+# roads below a trunk lean into their bends too, by the same rule at their own design speed (the mapped speed limit
+# when there is one, else the class's) and side friction, up to RURAL_BANK_E_MAX (AASHTO's rural e_max: 10 %). Their
+# bends are tens of metres long, not a motorway's hundreds, and their map lines dense: the curvature is read over
+# RURAL_BANK_STENCIL_M and the lean comes in over RURAL_BANK_RUNOFF_M (a 100 m window saw a 40 m hairpin as a gentle
+# bend). Not a town's streets (Spec.urban), a slip road, a mountain pass road (graded to its walls and parapets:
+# Plan.steep) or a roundabout's ring (RING_LEVEL_ON). BNE_RURAL_BANK=on (the settings page's "Banked country roads").
+RURAL_BANK_ON = os.environ.get("BNE_RURAL_BANK", "off") == "on"
+RURAL_BANK_E_MAX = 0.10
+RURAL_BANK_DESIGN = {"primary": (90.0, 0.13), "secondary": (80.0, 0.14), "tertiary": (70.0, 0.15),
+                     "unclassified": (60.0, 0.16), "residential": (50.0, 0.17)}    # km/h without a limit, friction
+RURAL_BANK_KMH = (40.0, 100.0)  # a mapped limit taken as the design speed within this
+RURAL_BANK_STENCIL_M = 30.0
+RURAL_BANK_RUNOFF_M = 40.0
+RURAL_BANK_FADE_M = 30.0
+RURAL_BANK_SIGMA_M = 6.0
+
+
+def bank_design(spec):
+    """(e_max, r_min m, stencil m, runoff m, fade m, smoothing sigma m) of a road that banks its curves, else None."""
+    cls = getattr(spec, "cls", None)
+    if not BANK_ON:
+        return None
+    link = getattr(spec, "link", False)
+    if cls in BANK_DESIGN:
+        v, f = BANK_LINK if link else BANK_DESIGN[cls]
+        return (BANK_E_MAX, v * v / (127.0 * (BANK_E_MAX + f)), BANK_STENCIL_M, BANK_RUNOFF_M, BANK_FADE_M,
+                BANK_SIGMA_M)
+    if not RURAL_BANK_ON or cls not in RURAL_BANK_DESIGN or link or getattr(spec, "urban", False) \
+            or getattr(spec, "mountain", False):
+        return None
+    v, f = RURAL_BANK_DESIGN[cls]
+    kmh = getattr(spec, "kmh", None)
+    if isinstance(kmh, (int, float)) and kmh > 0:
+        v = min(max(float(kmh), RURAL_BANK_KMH[0]), RURAL_BANK_KMH[1])
+    e = RURAL_BANK_E_MAX
+    return (e, v * v / (127.0 * (e + f)), RURAL_BANK_STENCIL_M, RURAL_BANK_RUNOFF_M, RURAL_BANK_FADE_M,
+            RURAL_BANK_SIGMA_M)
 
 
 DIRT_BANK_M = float(os.environ.get("BNE_DIRT_BANK", "0"))   # cross slope a worn dirt road leans to (m per m); off with
@@ -1587,19 +1644,19 @@ def bank(xy, spec, abut=(False, False), ext=(0, 0)):
     """(n,) the cross slope of a road part's centreline xy (n, 2) (m per m toward its left), or None (not banked)."""
     if spec.kind not in roadsmod.BUILT:
         return dirt_bank(xy, spec, ext)
-    if not BANK_ON or spec.cls not in BANK_DESIGN or len(xy) < 3:
+    design = bank_design(spec)
+    if design is None or len(xy) < 3:
         return None
-    v, f = BANK_LINK if getattr(spec, "link", False) else BANK_DESIGN[spec.cls]
-    r_min = v * v / (127.0 * (BANK_E_MAX + f))
+    e_max, r_min, stencil, runoff, fade_m, sigma = design
     import fast
     fast.require(84, "bank_profile")
-    fade = [BANK_FADE_M if (abut[k] or not ext[k]) else 0.0 for k in (0, 1)]
-    b = np.asarray(fast._ef.bank_profile(np.ascontiguousarray(np.asarray(xy, np.float64)[:, :2]), float(BANK_E_MAX),
-                                         float(r_min), float(BANK_STENCIL_M), float(BANK_RUNOFF_M),
+    fade = [fade_m if (abut[k] or not ext[k]) else 0.0 for k in (0, 1)]
+    b = np.asarray(fast._ef.bank_profile(np.ascontiguousarray(np.asarray(xy, np.float64)[:, :2]), float(e_max),
+                                         float(r_min), float(stencil), float(runoff),
                                          float(fade[0]), float(fade[1])), np.float64)
     step = float(np.median(dnp.norm(np.diff(np.asarray(xy)[:, :2], axis=0), axis=1)))
     if step > 0.0:
-        b = smooth_profile(b, step, BANK_SIGMA_M)  # pinned ends keep bridge abutments level
+        b = smooth_profile(b, step, sigma)  # pinned ends keep bridge abutments level
     if fade[0]:
         b[0] = 0.0
     if fade[1]:
@@ -3177,10 +3234,11 @@ class _Planner:
                 q_class.append(int(round(sg * 1000)))
                 q_road.append(road_id(fid))
                 reach = 3.0 * sg + PROFILE_STEP
-                if BANK_ON and spec.kind in roadsmod.BUILT and spec.cls in BANK_DESIGN:
+                bd = bank_design(spec) if spec.kind in roadsmod.BUILT else None
+                if bd is not None:
                     # Runoff averages curvature beyond the join, and that
                     # curvature needs its own stencil on either side too.
-                    reach = max(reach, BANK_STENCIL_M + BANK_RUNOFF_M / 2 + 3 * BANK_SIGMA_M + PROFILE_STEP)
+                    reach = max(reach, bd[2] + bd[3] / 2 + 3 * bd[5] + PROFILE_STEP)
                 q_reach.append(reach)
                 q_cell.append(lonlat[0] if end == 0 else lonlat[-1])
         if q_cell:                  # (the ends' cells at once)
@@ -6213,7 +6271,7 @@ class _Planner:
             if got is None:
                 return False
             key, _end, ends, spec = got
-            if getattr(spec, "cls", None) not in BANK_DESIGN:
+            if bank_design(spec) is None:
                 return False
             return bool(self._deck_end_simple_at(key, 0, ends[0]) and self._deck_end_simple_at(key, 1, ends[1]))
         except Exception as e:      # the road faded level at the deck rather than no grading
