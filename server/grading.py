@@ -1132,12 +1132,21 @@ def plan_roads(frame, parts, elev, abut=None, ext=None, pins=None, cuts=True, co
             ends = [np.zeros((0, 2)) if abut is not None and ABUT_FILL_ON and abut[j][e] else side
                     for e, side in ((0, pr[4][max(0, len(pr[4]) - m):]), (1, pr[5][:m]))]
             q = np.concatenate([ends[0], pr[0], ends[1]])
-            rq.append((q[:, None, :] + _normals(q)[:, None, :] * offs[None, :, None]).reshape(-1, 2))
+            rq.append(np.concatenate([q, _normals(q)], axis=1))
             rj.append((j, len(q), len(ends[0]), len(ends[1])))
         if rq:
+            # (every part's at once. The samples across a point lie on a line 2 RURAL_BENCH_HILL_M long: its two
+            # ends' geodetic places, the others between them in proportion, within 0.05 mm of their own: 2 of the
+            # frame's conversions a point for len(offs), which cost as much as the elevation's reads)
             Q = np.concatenate(rq)
-            qla, qlo, _ = frame.enu_to_geodetic(Q[:, 0], Q[:, 1], 0.0)
-            got = bench_lean(np.asarray(elev(qla, qlo), np.float64).reshape(-1, len(offs)))     # (every part's at once)
+            far = Q[:, 2:] * offs[-1]
+            ela, elo, _ = frame.enu_to_geodetic(np.r_[Q[:, 0] - far[:, 0], Q[:, 0] + far[:, 0]],
+                                                np.r_[Q[:, 1] - far[:, 1], Q[:, 1] + far[:, 1]], 0.0)
+            ela, elo = np.asarray(ela, np.float64).reshape(2, -1), np.asarray(elo, np.float64).reshape(2, -1)
+            t = (offs - offs[0]) / (offs[-1] - offs[0])
+            got = bench_lean(np.asarray(elev((ela[0][:, None] + (ela[1] - ela[0])[:, None] * t).ravel(),
+                                             (elo[0][:, None] + (elo[1] - elo[0])[:, None] * t).ravel()),
+                                        np.float64).reshape(-1, len(offs)))
             o = 0
             for j, n, n0, n1 in rj:
                 leans[j] = (got[o:o + n], n0, n1)
@@ -1681,24 +1690,34 @@ def bench_lean(zc):
     zc = np.asarray(zc, np.float64)
     x = bench_offsets()[1:-1]
     nb = int(round(RURAL_BENCH_BAND_M / RURAL_BENCH_STEP_M)) + 1
-    x0 = x[:nb] - x[:nb].mean()
-    den = float((x0 * x0).sum())
-    n = len(zc)
-    lean, at, best = np.full(n, np.nan), np.zeros(n), np.full(n, np.inf)
+    nw = len(x) - nb + 1                                    # strips a point: their samples x[j:j + nb]
+    at = x[:nw] + (x[nb - 1] - x[0]) / 2.0                  # (each strip's middle, m to the left of the line)
+    den = float(((x[:nb] - at[0]) * (x[:nb] - at[0])).sum())
     with np.errstate(invalid="ignore"):
-        for j in range(len(x) - nb + 1):
-            c = float(x[j:j + nb].mean())
-            w = zc[:, 1 + j:1 + j + nb]
-            w0 = w - w.mean(axis=1, keepdims=True)
-            sl = (w0 @ x0) / den
-            rms = np.sqrt(np.mean((w0 - sl[:, None] * x0) ** 2, axis=1))
-            cost = np.abs(sl) + RURAL_BENCH_ROUGH * rms + RURAL_BENCH_OFF * abs(c)
-            ok = (rms <= RURAL_BENCH_RMS_M) & (np.abs(sl) <= RURAL_BENCH_SLOPE_MAX) & (cost < best)
-            lean[ok], at[ok], best[ok] = sl[ok], c, cost[ok]
+        # every strip of every point at once: a straight fit's slope and roughness from the strip's sums of z, x z
+        # and z z, each a difference of running sums across the row (heights from the row's middle sample: metres,
+        # not the hundreds above sea level, squared)
+        z = zc[:, 1:-1] - zc[:, len(x) // 2 + 1, None]
+
+        def strips(v):
+            run = np.cumsum(v, axis=1)
+            out = run[:, nb - 1:].copy()
+            out[:, 1:] -= run[:, :nw - 1]
+            return out
+
+        sz, sxz, szz = strips(z), strips(z * x), strips(z * z)
+        sl = (sxz - at * sz) / den
+        rms = np.sqrt(np.maximum(szz - sz * sz / nb - sl * sl * den, 0.0) / nb)
+        cost = np.abs(sl) + RURAL_BENCH_ROUGH * rms + RURAL_BENCH_OFF * np.abs(at)
+        cost = np.where((rms <= RURAL_BENCH_RMS_M) & (np.abs(sl) <= RURAL_BENCH_SLOPE_MAX), cost, np.inf)
+        j = cost.argmin(axis=1)                             # (the first of equals: the strip furthest right)
+        rows = np.arange(len(zc))
+        lean = np.where(np.isfinite(cost[rows, j]), sl[rows, j], np.nan)
         hill = (zc[:, -1] - zc[:, 0]) / (2.0 * RURAL_BENCH_HILL_M)
         steep = np.abs(lean) > RURAL_BENCH_FLAT
         # (an unreadable land either side, NaN: the strip stands on its own)
-        lean[steep & ((np.abs(lean - hill) < RURAL_BENCH_APART) | (np.abs(at) > RURAL_BENCH_REACH_M - 1e-9))] = np.nan
+        lean[steep & ((np.abs(lean - hill) < RURAL_BENCH_APART)
+                      | (np.abs(at[j]) > RURAL_BENCH_REACH_M - 1e-9))] = np.nan
     return lean
 
 
