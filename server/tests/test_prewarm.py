@@ -104,7 +104,7 @@ class RailMaterialsTest(unittest.TestCase):
         import prewarm
         import railways
         got = set(prewarm.materials())
-        for m in railways.BALLAST_WORN + railways.STEEL_WORN + railways.SLEEPER_WORN + (railways.CONCRETE,):
+        for m in railways.BALLAST_WORN + railways.STEEL_WORN + railways.SLEEPER_WORN + (railways.CONCRETE, railways.BED_OVERGROWN):
             self.assertIn(m, got)
 
     def test_no_looks(self):

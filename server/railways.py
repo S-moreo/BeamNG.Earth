@@ -117,6 +117,9 @@ BALLAST_WORN = (BALLAST, "bne_rail_ballast_weedy", "bne_rail_ballast_grown")
 STEEL_WORN = (STEEL, "bne_rail_steel_old", "bne_rail_steel_old")
 SLEEPER_WORN = (SLEEPER, "bne_rail_sleeper_old", "bne_rail_sleeper_old")
 SLEEPERS_GONE = (0.0, 0.0, 0.3)
+BED_OVERGROWN = "bne_rail_bed_overgrown"    # an old bed's (BNE_RAIL_ABANDONED=bed): its gravel, weeds and grass through it
+if ABANDONED_BED:                           # (Smore, 2026-11-22: the grown ballast's grassy dirt "looks bad")
+    BALLAST_WORN = BALLAST_WORN[:2] + (BED_OVERGROWN,)
 
 
 _GROUND_MEMO = {}            # anchor key -> {point (cm): z}: point_ground's heights, shared by the tiles of an anchor

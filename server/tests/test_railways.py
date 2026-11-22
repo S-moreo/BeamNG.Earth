@@ -1,4 +1,5 @@
 """Railway tracks (railways.py): the rail lines taken, the level crossings, the bed's heights and the mesh."""
+import json
 import math
 import os
 import sys
@@ -593,11 +594,12 @@ class RailwayTest(unittest.TestCase):
             return any(((xy[:, 0] > x - h) & (xy[:, 0] < x + h)).any() for i, _c, k, xy in rails
                        if i == fid and k == kind)
         on = (mock.patch.object(railways, "ABANDONED_BED", True), mock.patch.object(railways, "BARE_WEARS", {2}),
-              mock.patch.object(railways, "WORN_CUT_CLASSES", {1: {"motorway"}, 2: frozenset(roads.STYLE)}))
+              mock.patch.object(railways, "WORN_CUT_CLASSES", {1: {"motorway"}, 2: frozenset(roads.STYLE)}),
+              mock.patch.object(railways, "BALLAST_WORN", railways.BALLAST_WORN[:2] + (railways.BED_OVERGROWN,)))
         before = railways.parts(FRAME, [f], roads.tile_bbox(0, 0))
         self.assertTrue(over(before, "id000", 120.0) and over(before, "id000", 187.5, "bridge"), "off: as before")
         self.assertFalse(railways.bare(f, 0))
-        with on[0], on[1], on[2]:
+        with on[0], on[1], on[2], on[3]:
             rails = railways.parts(FRAME, [f], roads.tile_bbox(0, 0))
             self.assertEqual([railways.bare(f, i) for i in range(4)], [True, True, False, False])
             self.assertFalse(roads._rail_drawn(f, 0), "no headroom over an old bed")
@@ -610,7 +612,10 @@ class RailwayTest(unittest.TestCase):
         self.assertTrue(over(rails, "id001", 60.0), "on the ground there")
         self.assertTrue(over(rails, "id002", 120.0), "a disused line keeps its level crossing")
         used = {mats[k] for k in np.unique(tm)}
-        self.assertIn("bne_rail_ballast_grown", used, "the grown-over bed drawn")
+        self.assertIn(railways.BED_OVERGROWN, used, "the overgrown gravel bed drawn")
+        with open(os.path.join(os.path.dirname(__file__), "..", "..", "mod", "beamng_earth", "levels", "beamng_earth",
+                               "art", "shapes", "beamngEarth", "tunnel.materials.json")) as fh:
+            self.assertIn(railways.BED_OVERGROWN, json.load(fh), "its material in the mod")
         y = P[:, 1]
         for k, name in enumerate(mats):
             if name in (railways.COLLIDER,) + railways.STEEL_WORN + railways.SLEEPER_WORN:
