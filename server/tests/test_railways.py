@@ -585,6 +585,8 @@ class RailwayTest(unittest.TestCase):
                      flags=[(0, "is_abandoned"), (0, "is_bridge", 0.7, 0.8), (1, "is_abandoned"),
                             (1, "is_bridge", 0.7, 0.8), (2, "is_disused")])
         f.attrs["osm_bridge_gone"] = np.array(["0.7:0.8", None, None, None], object)
+        # (OSM's layer=1 on the whole way: Overture's level 1 end to end, the Hilliards Branch at Boyers PA)
+        f.rules["level"] = railways.mapgeom.rule_table([(1, 1.0, None)], "float")
         hw = roads.STYLE["residential"][0] / 2
 
         def over(rails, fid, x, kind="ground", h=hw):
@@ -604,6 +606,8 @@ class RailwayTest(unittest.TestCase):
         self.assertFalse(over(rails, "id000", 120.0), "the bed stops at the street")
         self.assertFalse(over(rails, "id000", 187.5, "bridge"), "no bridge where OSM has it razed")
         self.assertTrue(over(rails, "id001", 187.5, "bridge"), "a standing bridge kept")
+        self.assertFalse(over(rails, "id001", 60.0, "bridge"), "a level alone: no viaduct")
+        self.assertTrue(over(rails, "id001", 60.0), "on the ground there")
         self.assertTrue(over(rails, "id002", 120.0), "a disused line keeps its level crossing")
         used = {mats[k] for k in np.unique(tm)}
         self.assertIn("bne_rail_ballast_grown", used, "the grown-over bed drawn")

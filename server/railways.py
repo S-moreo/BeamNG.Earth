@@ -91,8 +91,9 @@ RAIL_LIFECYCLE = os.environ.get("BNE_RAIL_LIFECYCLE", "off") == "on"
 # 2026-11-22). With the switch an abandoned line is its grown-over bed (no rails, sleepers or rail colliders:
 # BARE_WEARS, earthfast's rail mesh), cut at every road it crosses (WORN_CUT_CLASSES), standing over nothing: no
 # building cleared off it (buildings.rail_lines), no road separated over it (gradesep, roads' deck headroom, grading's
-# approaches) and only the bridges OSM still has standing (_level_ranges: railtags' osm_bridge_gone). Disused lines
-# (wear 1: rails still in place) are as before. Off by default until reviewed in game.
+# approaches), off the ground only where the map flags a bridge or tunnel (not a level alone) and only on the bridges
+# OSM still has standing (_level_ranges: railtags' osm_bridge_gone). Disused lines (wear 1: rails still in place) are
+# as before. Off by default until reviewed in game.
 ABANDONED_BED = os.environ.get("BNE_RAIL_ABANDONED", "worn") == "bed"
 BARE_WEARS = frozenset({2}) if ABANDONED_BED else frozenset()      # (read by earthfast's rail_tile_mesh, 603)
 # Railway-at-road fixes (the user's in-game reports r63 / r64 / r92, 2026-11-17; the Revamped roads switch set): a track
@@ -892,16 +893,34 @@ def bare(feats, i):
 
 
 def _level_ranges(feats, i):
-    """roads.level_ranges of a rail feature, with BNE_RAIL_ABANDONED=bed an abandoned line's bridges OSM has gone
-    (railtags' osm_bridge_gone: a bridge=razed / dismantled / washed_out ... way, which Overture still flags is_bridge)
-    of kind "gone": neither bridge nor ground, nothing drawn there (_pieces_of, earthfast's rail_parts_select)."""
+    """roads.level_ranges of a rail feature. With BNE_RAIL_ABANDONED=bed an abandoned line leaves the ground only where
+    a flag of the map makes it a bridge or tunnel, its ranges cut to the flags': a level alone is not one (OSM's
+    layer=1 on the whole 16 km way of the Hilliards Branch is Overture's level 1 end to end: a viaduct through Boyers PA
+    for its 13 m of bridge). A bridge OSM has gone (railtags' osm_bridge_gone: a bridge=razed / dismantled /
+    washed_out ... way, which Overture still flags is_bridge) is of kind "gone": neither bridge nor ground, nothing
+    drawn there (_pieces_of, earthfast's rail_parts_select)."""
     rngs = roads.level_ranges(feats, i)
-    gone = feats.attrs.get("osm_bridge_gone") if ABANDONED_BED and rngs else None
-    if gone is None or not gone[i] or not bare(feats, i):
+    if not ABANDONED_BED or not rngs or not bare(feats, i):
         return rngs
-    spans = [tuple(float(v) for v in ab.split(":")) for ab in str(gone[i]).split()]
-    return [(a, b, "gone" if k == "bridge" and any(min(b, d) - max(a, c) >= 0.5 * (b - a) for c, d in spans) else k)
-            for a, b, k in rngs]
+    flags = feats.rules.get("flags")
+    flagged = {"bridge": [], "tunnel": []}
+    for j in (flags.rows(i) if flags is not None else ()):
+        v = str(flags.value[j])
+        kind = "tunnel" if "is_tunnel" in v else "bridge" if "is_bridge" in v else None
+        if kind:
+            flagged[kind].append((float(flags.start[j]), float(flags.end[j])))
+    col = feats.attrs.get("osm_bridge_gone")
+    gone = [tuple(float(v) for v in ab.split(":")) for ab in str(col[i]).split()] if col is not None and col[i] else []
+
+    out = []
+    for a, b, k in rngs:
+        # (only the flagged part of a range: level_ranges merged the flag's 13 m into the level's whole way)
+        for c, d in (sorted(flagged[k]) if k in flagged else [(a, b)]):
+            lo, hi = max(a, c), min(b, d)
+            if hi > lo:
+                cut = any(min(hi, y) - max(lo, x) >= 0.5 * (hi - lo) for x, y in gone) and k == "bridge"
+                out.append((lo, hi, "gone" if cut else k))
+    return out
 
 
 def _pieces(feats, i):
