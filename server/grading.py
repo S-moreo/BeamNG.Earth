@@ -88,10 +88,13 @@ MEDIAN_M = float(os.environ.get("BNE_GRADE_MEDIAN", "24"))
 # road planned in other calls still smooth alike. On the coarse global model the roads ride more of its noise: a
 # switch for lidar places. BNE_ROAD_FOLLOW=on (the settings page's "Roads follow the land").
 FOLLOW_ON = os.environ.get("BNE_ROAD_FOLLOW", "off") == "on"
-FOLLOW_CLASS_SIGMA_M = {"primary": 14.0, "secondary": 11.0, "tertiary": 9.0, "unclassified": 8.0,
-                        "residential": 7.0, "service": 6.0, "living_street": 6.0}
+# (first cut 14 / 11 / 9 / 8 / 7 / 6 m and a 12 m median; the user on Bakers Ridge Road, Morgantown, a rough residential
+# street: "roads still feel a little flattened", 2026-11-21. The plan's 4 m vertices and the physics block's 2 m lattice
+# take nothing much shorter than ~8 m to the tyres either way.)
+FOLLOW_CLASS_SIGMA_M = {"primary": 12.0, "secondary": 9.0, "tertiary": 6.0, "unclassified": 5.0,
+                        "residential": 4.0, "service": 4.0, "living_street": 4.0}
 FOLLOW_LINK_SIGMA_M = 8.0   # a slip road's (SIGMA_M otherwise)
-FOLLOW_MEDIAN_M = 12.0
+FOLLOW_MEDIAN_M = 8.0
 if FOLLOW_ON:
     MEDIAN_M = min(MEDIAN_M, FOLLOW_MEDIAN_M)
 DIRT_MEDIAN_M = 10.0        # (tracks keep their small real bumps)

@@ -39,8 +39,8 @@ class FollowTest(unittest.TestCase):
 
     def test_on_shorter_for_minor_classes_majors_kept(self):
         with mock.patch.object(grading, "FOLLOW_ON", True):
-            self.assertEqual(grading.profile_sigma(spec("tertiary")), 9.0)
-            self.assertEqual(grading.profile_sigma(spec("primary")), 14.0)
+            self.assertEqual(grading.profile_sigma(spec("tertiary")), 6.0)
+            self.assertEqual(grading.profile_sigma(spec("primary")), 12.0)
             self.assertEqual(grading.profile_sigma(spec("tertiary", link=True)), grading.FOLLOW_LINK_SIGMA_M)
             self.assertEqual(grading.profile_sigma(spec("motorway")), grading.SIGMA_MAJOR_M)
             self.assertEqual(grading.profile_sigma(spec("trunk")), grading.SIGMA_MAJOR_M)
