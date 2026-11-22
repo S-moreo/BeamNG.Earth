@@ -7,6 +7,8 @@
 #![deny(clippy::disallowed_methods, clippy::disallowed_types, clippy::iter_over_hash_type)]
 use crate::dm::Dm;
 mod dm;
+mod roadsysbind;
+mod unalign;
 mod island_kerb;
 mod deckreach;
 mod demsample;
@@ -105,6 +107,9 @@ mod dirtsteps;
 mod dirtnoise;
 mod racedig;
 mod racejoin;
+mod railmesh;
+mod railstations;
+mod catenary;
 mod railfit;
 mod gridinterp;
 mod dejunction;
@@ -179,6 +184,7 @@ mod layerfold;
 mod terrainblock;
 mod blockgrid;
 mod blockphoto;
+mod farstandin;
 mod landcover;
 mod roadsurf;
 mod levelways;
@@ -7044,6 +7050,8 @@ fn earthfast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // 235: roadsmooth.smooth's layer steps (road_connector_pins, road_smooth_rebuild, road_smooth_fractions: its
     // Python round the line kernels was most of the smoothing's CPU)
     m.add_function(wrap_pyfunction!(roadsmooth::road_connector_pins, m)?)?;
+    // 594: roadsmooth.smooth's lines rounded one at a time with their switch pins, in one call (road waits)
+    m.add_function(wrap_pyfunction!(roadsmooth::road_smooth_pinned_many, m)?)?;
     m.add_function(wrap_pyfunction!(roadsmooth::road_smooth_rebuild, m)?)?;
     m.add_function(wrap_pyfunction!(roadsmooth::road_smooth_fractions, m)?)?;
     // (and lanesections.split's new layer: lane_split_coords / lane_split_rules)
@@ -7618,12 +7626,21 @@ fn earthfast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(blockphoto::block_base_photo, m)?)?;
     m.add_function(wrap_pyfunction!(blockphoto::block_rgba, m)?)?;
     m.add_class::<blockphoto::BlockPhotoOverlap>()?;
+    m.add_function(wrap_pyfunction!(farstandin::far_standin, m)?)?;   // 597
     m.add_function(wrap_pyfunction!(landcover::landcover_samples, m)?)?;
     m.add_function(wrap_pyfunction!(blockgrid::block_cached_grid, m)?)?;
     m.add_function(wrap_pyfunction!(terrainblock::block_params, m)?)?;
     m.add_function(wrap_pyfunction!(terrainblock::block_height_at, m)?)?;
     m.add_function(wrap_pyfunction!(landcover::landcover_dry_west, m)?)?;
     // 564: merged
-    m.add("VERSION", 583)?;
+    railmesh::register(m)?;
+    railstations::register(m)?;
+    catenary::register(m)?;
+    // 596: the road surface + bridge rewrite's shadow product and M0 audit (native/roadsys; BNE_ROADSYS=shadow); 600: M2's
+    // heights squares (RoadsysSquare, roadsys_square, roadsys_blend; BNE_ROADSYS=heights)
+    roadsysbind::register(m)?;
+    // 599: unalign::collider_unalign (colliders off the axis-aligned lattice, cdae.COLLIDER_UNALIGN_M)
+    unalign::register(m)?;
+    m.add("VERSION", 602)?;
     Ok(())
 }

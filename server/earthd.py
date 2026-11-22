@@ -372,10 +372,21 @@ def photo_process(cpus=None, small=None):
 STANDIN_WAIT_S = 1.0
 QUICK_SYNC_MAX_V = 150.0        # m/s (335 mph): slower, a block built ahead gets its stand-in photo before it is ready (224 mph left a player at 230 mph with brown flashes)
 RECENT_FULL = 2                 # full ground photos kept for the stand-ins' overlap (write_quick_base)
-QUICK_MIN_COVER = 0.8          # share of a stand-in's texels real imagery must cover (else no stand-in)
 QUICK_SHARE_WAIT_S = 30.0       # Server._quick_once: a caller waits this long for the stand-in being made
 QUICK_MADE_KEPT = 256           # blocks whose stand-in file names _quick_once remembers
-QUICK_BASE_PX = 512             # a block's stand-in photo (write_quick_base): the imagery alone, 2 m texels
+QUICK_BASE_PX = 256             # a block's stand-in photo (write_quick_base): the imagery alone, 4 m texels on a 1 km block
+# A block's stand-in photo drawn from the far tiles' textures on disk first (write_quick_base, earthfast.far_standin):
+# the ground the far field showed there, on the block's own geometry, no imagery tile read or fetched. Made in the photo
+# process, the stand-in queued behind full photos waiting on their downloads (a NJ drive 2026-11-21: p50 3.3 s, p90 14 s
+# after its block was asked for) and blocks came without one: the level's flat brown base, or with
+# PHOTOLESS_FAR_GROUND the far tiles at their own height over the drivable block (the user, 2026-11-21: "im driving
+# through the old lod terrain sometimes with the solid ground being under it"). BNE_FAR_STANDIN=off: as before.
+FAR_STANDIN = os.environ.get("BNE_FAR_STANDIN", "on") != "off"
+FAR_STANDIN_MIN_SHARE = 0.9     # _stand_in takes the far textures alone when they cover this much (the rest filled round)
+# A full photo with texels no imagery source covered (the renderer's brown fill, "none") is refused this many times per
+# block (base_refresh tries again, the far ground's photo shown meanwhile), then taken as it is: a source with a lasting
+# hole (no tile there, ever) would otherwise render the block's 4096² photo again every few seconds for good
+BASE_NONE_TRIES = 3
 BASE_NO_STANDIN_MAX_S = 8.0     # a block with no stand-in possible waits this long at most for its photo
 # A teleport's provisional first block waits this long at most for its photo after its heights, then goes with its
 # stand-in (made beside it), the photo swapped in when done (_base_later): the car placed ~1-2 s sooner on a fresh place
@@ -431,7 +442,7 @@ def base_ao_vfs(px):
 # takes the modules that call revisit.key / load / store, and this one calls them as revisitmod), so a change here to how
 # a block's photo is made (write_base, write_quick_base's overlap, _base_in's arguments, BASE_SHIFT_M) bumps it, or a
 # place visited before keeps the photo the older code made. blockworker.base_photo and genground.py are in the code key.
-BASE_PHOTO_VERSION = 1
+BASE_PHOTO_VERSION = 2
 BASE_AO = 251                   # its flat value (tools/make_level_assets.py)
 GRAPHICS_SCALE = (0.5, 3.0)     # the 'graphics' message's scales are clamped to this (Connection.set_graphics)
 # Screen-space LOD (the mod's lodPx setting, the 'graphics' message; Connection.view): tau is clamped to LOD_PX_MAX; the
@@ -1412,6 +1423,7 @@ class Server:
         self.ter_serial = itertools.count()
         self.base_stale = set()         # blocks whose base photo lacks lazy imagery (NAIP) still to come
         self.base_skipped = set()      # blocks built without their photo (a fast player's prefetch: base_refresh)
+        self.base_none = {}             # block -> its full photos refused for missing imagery (BASE_NONE_TRIES)
         self.quick_pool = ThreadPoolExecutor(1, thread_name_prefix="quick-base")   # stand-in photos (_quick_later)
         self.quick_early = ThreadPoolExecutor(2, thread_name_prefix="quick-early")   # ... started with a block (fast)
         self.quick_lock = threading.Lock()  # (_quick_once: a block's stand-in made once)
@@ -1761,8 +1773,16 @@ class Server:
         now = time.monotonic()
         for sid in conn.sessions - others:
             if sid in self.orphans:
-                self.orphans[sid] = now
+                self._restart_grace(sid, now)
         conn.sessions = set()
+
+    def _restart_grace(self, sid, now):
+        """A session's grace starts again at `now`. The stored value always changes, so a sweep that read the old one
+        sees the restart (_finish_session_sweep compares them): Windows' monotonic clock ticks every ~15.6 ms, and a
+        restart in the same tick as the sweep's snapshot left the value equal and the folder was deleted
+        (test_sweep_rechecks_ownership_after_listing, Windows CI, gate 297)."""
+        prev = self.orphans.get(sid)
+        self.orphans[sid] = now if prev is None or now > prev else math.nextafter(prev, math.inf)
 
     def release_session(self, sid):
         """An adopted session the game no longer uses: its files go through the rate-limited delete
@@ -1862,7 +1882,7 @@ class Server:
             self.slots_let_go(set(lease.slots))
             for sid in lease.sessions - others:
                 if sid in self.orphans:
-                    self.orphans[sid] = now
+                    self._restart_grace(sid, now)
         return len(gone)
 
     def snap(self, v):
@@ -4305,7 +4325,7 @@ class Server:
             # (and faster than PHOTO_SKIP_V a requested one too: in use 2-3 s at 150 mph, its 3-7 s photo came after
             # the car had left it, 36 photos for 28 blocks of a 3 mile drive, two of the server's four CPUs;
             # base_refresh draws the block in use's, one at a time, and the stand-ins after it take its overlap)
-            # a fast player's prefetched block: its photo only once the mod has it (base_refresh: a stale base); a
+            # Refine only an imminent block on the predicted path or one the mod has taken. A
             # 3-8 s photo for every guessed block, half of them never asked for, took the CPU the road tiles needed
             # (500 mph, 2026-10-30)
             self.base_stale.add((anchor.id, cx, cy))
@@ -4919,10 +4939,14 @@ class Server:
                               os.path.join(self.out_dir, name),
                               (self.user_dir, f"{self.vfs_dir}/{name}", base_ao_vfs(self.base_px), BASE_AO),
                               fuel_pads=self.block_fuel_pads(anchor, cx, cy, size), out_px=self.base_px,
+                              allow_none=Server._none_ok(self, key),
                               **({"trees": getattr(self, "veg", None) is not None, "canopy": canopy_out is not None}
                                  if genground.ON else {})).result()
         except Exception as e:
             log.info("base photo %s in the block process: %s", key, e)
+            return None
+        if got == "none":               # (texels no imagery covered: refused, BASE_NONE_TRIES)
+            Server._refuse_none(self, key)
             return None
         if got is None:
             return None
@@ -5035,7 +5059,7 @@ class Server:
                 info["stages"]["baseQuick"] = time.perf_counter() - t1
             if not base.done() and not quick and early is None and getattr(self, "speed", 0.0) < QUICK_SYNC_MAX_V \
                     and self.imagery is not None:     # (an early one tried: not again here, _quick_later)
-                quick = self._quick_once(anchor, cx, cy, lambda: (
+                quick = self._quick_once(anchor, cx, cy, lambda: self._far_quick(anchor, cx, cy) or (
                     self._quick_elsewhere(anchor, cx, cy, lane) if lane == LANE_REQUEST else None)
                     or self.write_quick_base(anchor, cx, cy))
                 info["stages"]["baseQuick"] = time.perf_counter() - t1
@@ -5095,7 +5119,7 @@ class Server:
                 info.setdefault("stages", {})["standIn"] = time.perf_counter() - t1
             elif getattr(self, "speed", 0.0) < QUICK_SYNC_MAX_V:
                 # (in the block's own process when it can: just done with its heights; here it took 2-6 s, 2026-10-31)
-                info["base"] = self._quick_once(anchor, cx, cy, lambda: (
+                info["base"] = self._quick_once(anchor, cx, cy, lambda: self._far_quick(anchor, cx, cy) or (
                     self._quick_elsewhere(anchor, cx, cy, lane) if lane is not None else None)
                     or self.write_quick_base(anchor, cx, cy))
             else:
@@ -5120,7 +5144,8 @@ class Server:
         info = self.hm.get(key)
         if info is not None and info.get("base"):
             return                              # (its own photo came while this waited its turn)
-        name = self._quick_once(anchor, cx, cy, lambda: self._quick_elsewhere(anchor, cx, cy, LANE_PREFETCH)
+        name = self._quick_once(anchor, cx, cy, lambda: self._far_quick(anchor, cx, cy)
+                                or self._quick_elsewhere(anchor, cx, cy, LANE_PREFETCH)
                                 or self.write_quick_base(anchor, cx, cy))
         conns = [c for c in list(self.connections) if getattr(c, "loop", None) is not None]
         if not name or not conns:
@@ -5188,11 +5213,44 @@ class Server:
         return self.hm_stem(key) + "_base_q" + terraincache.PHOTO_EXT
 
     def _stand_in(self, anchor, cx, cy):
-        """A requested block's stand-in photo made beside its heights (fast): in the prefetch lane's process, else
-        here; its file name or None."""
-        return self._quick_once(anchor, cx, cy, lambda: self._quick_elsewhere(anchor, cx, cy, LANE_PREFETCH,
-                                                                              self.photo_pool)
+        """A requested block's stand-in photo made beside its heights (fast): from the far tiles' textures here when
+        they cover the block (_far_quick), else in the prefetch lane's process, else here; its file name or None."""
+        return self._quick_once(anchor, cx, cy, lambda: self._far_quick(anchor, cx, cy)
+                                or self._quick_elsewhere(anchor, cx, cy, LANE_PREFETCH, self.photo_pool)
                                 or self.write_quick_base(anchor, cx, cy))
+
+    def _far_quick(self, anchor, cx, cy):
+        """write_quick_base from the last photos' overlap and the far tiles' textures alone (no imagery tile read or
+        fetched: ~0.2-1 s here), or None when they cover less than FAR_STANDIN_MIN_SHARE of the block."""
+        if not FAR_STANDIN or self.near_visual != "detail" or self.imagery is None:
+            return None
+        return self.write_quick_base(anchor, cx, cy, far_only=True)
+
+    def far_standin_tiles(self, anchor, x0, y0, size):
+        """The far tiles' textures over the square [x0, x0 + size]² of anchor's frame, coarsest first (the finer drawn
+        over them): [(DDS path, footprint x0, y0, size)] for earthfast.far_standin. The anchor's own tiles (a global
+        tile's texture is a Mercator square of another frame)."""
+        x1, y1 = x0 + size, y0 + size
+        items, tiles = [], getattr(self, "tiles", None) or {}     # (a test's stand-in server may have none)
+        for _ in range(3):              # (the event loop adds and evicts tiles meanwhile)
+            try:
+                items = list(tiles.items())
+                break
+            except RuntimeError:
+                continue
+        rows = []
+        for ck, info in items:
+            t = getattr(info, "tile", None)
+            if ck[0] != anchor.id or not getattr(info, "texture", None) or t is None or isinstance(t, farfield.GTile):
+                continue
+            node = t.base if isinstance(t, farfield.Piece) else t
+            bx0, by0, bx1, by1 = node.bbox
+            if bx1 <= x0 or bx0 >= x1 or by1 <= y0 or by0 >= y1:
+                continue
+            rows.append((-node.size, str(ck[1]), os.path.join(self.out_dir, info.texture), float(bx0), float(by0),
+                         float(node.size)))
+        rows.sort()
+        return [r[2:] for r in rows]
 
     def _quick_once(self, anchor, cx, cy, make):
         """make() (a block's stand-in photo: its file name or None) once per block: a caller while it is being made
@@ -5271,11 +5329,14 @@ class Server:
         log.info("ground stand-in photo %s in %.2f s (its imagery not on disk)", key, time.perf_counter() - t0)
         return name
 
-    def write_quick_base(self, anchor, cx, cy):
-        """A block's stand-in photo while its own is drawn: the aerial imagery alone at QUICK_BASE_PX (no roofs, painted
-        roads or rock), packed for the game like the photo. A block sent without its photo showed the level's flat
-        green base until the photo came (GitHub #548: at ~155 mph the outback flashed between red desert and green).
-        The file name, or None."""
+    def write_quick_base(self, anchor, cx, cy, far_only=False):
+        """A block's stand-in photo while its own is drawn: the last full photos' overlap, then the far tiles' textures
+        on disk (far_standin_tiles: what the far field showed there, often sharper than the imagery pass), then the
+        aerial imagery alone at QUICK_BASE_PX (no roofs, painted roads or rock) where they have none, packed for the
+        game like the photo. A block sent without its photo showed the level's flat green base until the photo came
+        (GitHub #548: at ~155 mph the outback flashed between red desert and green). far_only: no imagery pass (no
+        imagery read or download); None unless the overlap and the far textures cover FAR_STANDIN_MIN_SHARE of it.
+        The file name, or None. Never final: a stand-in's name (quick_base_name), its own photo comes after it."""
         size = self.layout.block * heightmap.SQUARE
         x0, y0 = cx - size / 2 - BASE_SHIFT_M, cy - size / 2 - BASE_SHIFT_M
         key = (anchor.id, cx, cy)
@@ -5293,25 +5354,36 @@ class Server:
             fill = None
             if not overlap.complete:
                 tq.append(("overlap", time.perf_counter()))
-                with (self.deshadow.no_wait() if self.deshadow is not None else contextlib.nullcontext()):
-                    small, used = self.imagery.render(anchor.frame, x0, y0, size, QUICK_BASE_PX, set())
-                tq.append(("imagery", time.perf_counter()))
-                covered = sum(v for k, v in (used or {}).items() if k != "colormatch")
-                if covered < QUICK_MIN_COVER * QUICK_BASE_PX * QUICK_BASE_PX and overlap.share < 0.5:
-                    # its imagery not here yet and little of it shown before: the renderer's dirt-brown fill over the
-                    # block ("the entire ground now turns brown"); none then, as before
+                far, far_n, tiles = None, 0, []
+                if FAR_STANDIN:
+                    fast.require(597, "far tile stand-in")
+                    tiles = self.far_standin_tiles(anchor, x0, y0, size)
+                    if tiles:
+                        # (at the photo's own size: the engine refuses another, "dont have required size of 4096-4096")
+                        far, far_n = fast._ef.far_standin(tiles, x0, y0, size, n)
+                    tq.append((f"far({len(tiles)} tiles, {far_n / (n * n):.0%})", time.perf_counter()))
+                # (the share of the block neither the overlap nor the far textures cover)
+                bare = (1.0 - overlap.share) * (1.0 - far_n / (n * n))
+                if far_n == n * n or (far_only and far_n and bare <= 1.0 - FAR_STANDIN_MIN_SHARE):
+                    fill = far              # (holes filled from round them: far_standin)
+                elif far_only:
                     return None
-                small = np.asarray(small, np.uint8)
-                if roadsmod.ROADS_IN_GROUND:    # the carriageways painted in at its own size (cached roads only)
-                    try:
-                        small = surfacemod.paint_square(small, anchor.frame, x0, y0, size, self.surface,
-                                                        self.road_widths, simple=True)
-                    except Exception as e:
-                        log.debug("quick base photo %s: roads: %s", key, e)
-                tq.append(("roads", time.perf_counter()))
-                # (at the photo's own size: the engine refuses another, "dont have required size of 4096-4096")
-                fill = surfacemod.enlarge(small, n)
-                tq.append(("enlarge", time.perf_counter()))
+                else:
+                    with (self.deshadow.no_wait() if self.deshadow is not None else contextlib.nullcontext()):
+                        small, used = self.imagery.render(anchor.frame, x0, y0, size, QUICK_BASE_PX, set())
+                    tq.append(("imagery", time.perf_counter()))
+                    if not used or used.get("none"):
+                        # Missing source pixels are the renderer's brown fill: the far textures' alone then (their
+                        # holes filled from round them), else none
+                        if not far_n:
+                            return None
+                        fill = far
+                    else:
+                        small = np.asarray(small, np.uint8)
+                        fill = surfacemod.enlarge(small, n)
+                        tq.append(("enlarge", time.perf_counter()))
+                        if far_n:           # (the far textures' texels over the imagery pass where they have them)
+                            fill, _ = fast._ef.far_standin(tiles, x0, y0, size, n, np.ascontiguousarray(fill, np.uint8))
             rgb, canopy = overlap.paste(fill)
             tq.append(("paste", time.perf_counter()))
             name = self.quick_base_name(key)
@@ -5324,20 +5396,43 @@ class Server:
             args = (self.user_dir, f"{self.vfs_dir}/{name}", base_ao_vfs(self.base_px), rgb, BASE_AO)
             if canopy is not None and genground.ON:
                 args += ((canopy, size / n),)
+            # (the CPU's BC7 encode on a block process's core: ~1 s here beside the rest; not an early stand-in, which
+            # its block waits for: there it queued behind that process's blocks)
             pool = self.block_pools[LANE_PREFETCH][0] if (URGENT_ELSEWHERE and self.block_pools and
-                                                          not bc7.gpu_ok()) else None
-            if pool is not None:        # (the CPU's BC7 encode on a block process's core: ~1 s here beside the rest)
+                                                          not bc7.gpu_ok() and not far_only) else None
+            if pool is not None:
                 pool.submit(blockworker.base_entry, *args).result()
             else:
                 terraincache.base_entry(*args)
             tq.append(("cache", time.perf_counter()))
-            if tq[-1][1] - tq[0][1] > 1.0:
-                log.info("quick base photo %s in %.2f s: %s (%d px)", key, tq[-1][1] - tq[0][1],
-                         " ".join(f"{k} {b - a:.2f}" for (_, a), (k, b) in zip(tq, tq[1:])), n)
+            if tq[-1][1] - tq[0][1] > 1.0 or far_only:
+                log.info("quick base photo %s in %.2f s: %s (%d px)%s", key, tq[-1][1] - tq[0][1],
+                         " ".join(f"{k} {b - a:.2f}" for (_, a), (k, b) in zip(tq, tq[1:])), n,
+                         " from the far tiles" if far_only else "")
             return name
         except Exception as e:      # the flat base then, as before
             log.info("quick base photo %s: %s", key, e)
             return None
+
+    def _none_tries(self):
+        d = getattr(self, "base_none", None)
+        if d is None:                   # (tests hand in a stand-in server)
+            d = self.base_none = {}
+        return d
+
+    def _none_ok(self, key):
+        """May block key's full photo be taken with texels no imagery covered (refused BASE_NONE_TRIES times)?"""
+        return Server._none_tries(self).get(key, 0) >= BASE_NONE_TRIES
+
+    def _refuse_none(self, key):
+        """A full photo of block key came with uncovered texels: True (refused, rendered again later: base_stale) or False
+        (refused BASE_NONE_TRIES times already: taken as it is)."""
+        if Server._none_ok(self, key):
+            return False
+        tries = Server._none_tries(self)
+        tries[key] = tries.get(key, 0) + 1
+        self.base_stale.add(key)
+        return True
 
     def write_base(self, anchor, cx, cy, pool=None, rev=0, photo=None, quick=False, canopy_out=None):
         """Detail mode: the block footprint's aerial photo (base_px² PNG, row 0 = north, the same imagery
@@ -5373,6 +5468,8 @@ class Server:
             if rgb is None:
                 with (self.deshadow.no_wait() if self.deshadow is not None else contextlib.nullcontext()):
                     rgb, used = self.imagery.render(anchor.frame, x0, y0, size, BASE_RENDER_PX, pending)
+            if used.get("none") and Server._refuse_none(self, (anchor.id, cx, cy)):
+                return None
             log.debug("base photo %s r%d: %s", (anchor.id, cx, cy), rev,
                       {k: round(v / (BASE_RENDER_PX * BASE_RENDER_PX), 3) for k, v in used.items()})
         except Exception as e:      # an imagery failure must not cost the terrain
@@ -5590,6 +5687,7 @@ class Server:
             reusable = []
             self.base_stale.discard(key)
             self.base_pending.pop(key, None)
+            Server._none_tries(self).pop(key, None)
             # its photos (the base, a refreshed one, the stand-in) with their packed copies in the game's terrain
             # texture cache
             for name in sorted({self.base_name(key), info.get("base") or self.base_name(key), self.quick_base_name(key),
@@ -9321,9 +9419,67 @@ class Connection:
                 self.loop.call_soon_threadsafe(self.status, f"Elevation tiles {done}/{total}")
         return progress
 
+    def far_cover(self, key, info):
+        """{far key: m} for the terrain message's `cover`: the exact sink (farfield.cover_sink) of every far tile sent
+        under this anchor that lies across the block's edge, against this block's own heights, which the mod uses
+        whenever it installs the block (farfield.lua 'partial'; without one it sinks such a tile by its error bound).
+        A hard commit does not wait for the far field to split them, and a coarse tile sunk by its error stood through
+        the block's road cuts (the user, 2026-11-21: "im driving through the old lod terrain sometimes with the solid
+        ground being under it"). Empty in mesh mode (the block is not drawn) and without such tiles (the usual case:
+        the commit gate waits for their split). The block's heights come from its .ter, else its PNG (~5 / ~20 ms)."""
+        if getattr(self.s, "near_visual", None) not in BLOCK_DRAWN or key[0] != getattr(self, "active", None):
+            return {}
+        try:
+            return self._far_cover(key, info)
+        except Exception:               # (never the block's delivery: the mod falls back to the error bound)
+            log.exception("far cover of block %s", key)
+            return {}
+
+    def _far_cover(self, key, info):
+        aid, cx, cy = key[0], float(key[1]), float(key[2])
+        half = heightmap.half_extent(self.s.layout.block)
+        bx0, by0, bx1, by1 = cx - half, cy - half, cx + half, cy + half
+        e = 0.01
+        cands = []
+        for k, t in self.sent.items():
+            if not isinstance(t, farfield.Tile):
+                continue
+            x0, y0, x1, y1 = t.bbox
+            if not (x0 < bx1 - e and bx0 + e < x1 and y0 < by1 - e and by0 + e < y1):
+                continue        # (not over the block)
+            if x0 >= bx0 - e and y0 >= by0 - e and x1 <= bx1 + e and y1 <= by1 + e:
+                continue        # (inside it: hidden or under its floor, the mod's own rule)
+            ti = self.s.tiles.get(self.s.far_ck(aid, k))
+            if ti is not None and ti.grid is not None:
+                cands.append((k, t.bbox, ti.grid))
+        if not cands:
+            return {}
+        n = self.s.layout.block
+        hm = None
+        try:
+            ter = info.get("ter")
+            if ter:
+                q = np.memmap(os.path.join(self.s.out_dir, ter), dtype="<u2", mode="r", offset=5, shape=(n, n))
+            else:
+                with Image.open(os.path.join(self.s.out_dir, info["heightmap"])) as im:
+                    q = np.asarray(im).astype(np.uint16)[::-1]
+            hm = float(info["zBase"]) + q * (float(info["maxHeight"]) / 65536)
+        except (OSError, KeyError, ValueError) as ex:
+            log.warning("far cover of block %s: no heights (%s)", key, ex)
+            return {}
+        out = {}
+        for k, bb, grid in cands:
+            s = farfield.cover_sink(grid, bb, hm, bx0, by0, heightmap.SQUARE)
+            if s is not None:
+                out[k] = math.ceil(s * 100) / 100
+        return out
+
     def terrain_msg(self, key, info):
         fast.require(578, "terrain message")
         out = fast._ef.terrain_message(self, key, info, heightmap.SQUARE, surfacemod.MATERIALS)
+        cover = self.far_cover(key, info)
+        if cover:
+            out["cover"] = cover
 
         lease = getattr(self, "lease", None)
         if lease is not None and not self.closing and not getattr(self, "terrain_unloaded", False) and lease.connection is self:
@@ -10019,7 +10175,7 @@ class Connection:
             self.sea_tiles(aid, x, y)
 
     def _pose_blocks(self, aid):
-        fast.require(578, "terrain pose prediction")
+        fast.require(588, "terrain pose prediction")
         return fast._ef.follow_pose(self, aid, FRAME_S, FAST_BASE_V, PREFETCH_CHAIN,
                                     (ROUTE_NEAR_M, ROUTE_ALIGN, ROUTE_STEP_M, ROUTE_AHEAD_S, ROUTE_AHEAD_MAX_M))
 
@@ -10143,10 +10299,9 @@ class Connection:
         if self.base_busy or not s.base_stale or s.imagery is None or s.near_visual != "detail":
             return
         anchor = s.anchors.get(aid)
-        cands = [k for k in list(s.hm_committed)[-1:] + list(s.hm_sent)[-1:] if k in s.base_stale and k[0] == aid]
         size = s.layout.block * heightmap.SQUARE
-        # (a skipped photo (a fast player's prefetched block): at once, its imagery is fetched as it renders)
-        key = next((k for k in cands if k in s.hm and (k in s.base_skipped or s.base_ready(anchor, k[1], k[2]))), None)
+        fast.require(588, "terrain photo prediction")
+        key = fast._ef.photo_refresh_key(self, aid, anchor, time.monotonic())
         if key is None:
             return
         self.base_busy = True
@@ -10175,8 +10330,13 @@ class Connection:
                                                               key[1], key[2], pool, rev)
                     f0.append(b)
                 info = s.hm.get(key)
-                if name is None or info is None:
+                if info is None:
                     return
+                if name is None:
+                    # A provider has no pixels here yet. Leave other oncoming blocks eligible.
+                    info["baseRetryAt"] = time.monotonic() + 5.0
+                    return
+                info.pop("baseRetryAt", None)
                 old, info["base"] = info.get("base"), name
                 if old and old != name and old != s.base_name(key):
                     # (kept until the block goes, prune_hm, with its pack: the mod may still show it a while, its
@@ -10187,9 +10347,11 @@ class Connection:
                     log.info("base photo of %s rendered again with its NAIP (%s)", key, name)
                 if bk is not None:          # (the place's final photo: a later visit's first takes it, revisit)
                     await self.loop.run_in_executor(s.hm_pool, s._base_keep, anchor, key[1], key[2], bk, name, f0)
-                s.note_base(key, name)
-                self.send({"type": "block_base", "anchorId": key[0], "cx": key[1], "cy": key[2],
-                           "base": f"{s.vfs_dir}/{name}", "baseSize": size})
+                # A predicted block still on the server carries this photo in its first terrain message.
+                if key in getattr(s.hm_sent, "ever", s.hm_sent) or key in s.hm_committed:
+                    s.note_base(key, name)
+                    self.send({"type": "block_base", "anchorId": key[0], "cx": key[1], "cy": key[2],
+                               "base": f"{s.vfs_dir}/{name}", "baseSize": size})
                 s.base_skipped.discard(key)
             except Exception:
                 log.exception("base photo refresh %s", key)
