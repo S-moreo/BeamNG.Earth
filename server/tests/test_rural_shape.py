@@ -10,6 +10,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import geodesy  # noqa: E402
 import grading  # noqa: E402
 import roads  # noqa: E402
 
@@ -79,7 +80,7 @@ class RuralBankTest(unittest.TestCase):
         with mock.patch.object(grading, "RURAL_BANK_ON", True):
             b = grading.bank(bend(40.0), spec("tertiary"), ext=(1, 1))
         self.assertIsNotNone(b)
-        self.assertLess(float(b.min()), -0.07)                # (a left-hand bend: grading's sign, the I-80 test's)
+        self.assertLess(float(b.min()), -0.05)                # (a left-hand bend: grading's sign, the I-80 test's)
         self.assertLessEqual(float(b.max()), 1e-9)            # one way only
         self.assertLessEqual(float(np.abs(b).max()), grading.RURAL_BANK_E_MAX + 1e-9)
         self.assertLess(abs(float(b[5])), 0.01)               # level on the straight lead
@@ -102,6 +103,55 @@ class RuralBankTest(unittest.TestCase):
             self.assertIsNone(grading.bank_design(spec("tertiary", link=True)))
             self.assertIsNone(grading.bank_design(spec("tertiary", mountain=True)))
             self.assertIsNone(grading.bank_design(spec("service")))
+
+
+class TerrainLeanTest(unittest.TestCase):
+    """plan_roads: the land's cross slope first, half the design rule's lean on top (RURAL_LEAN_*)."""
+    FRAME = geodesy.EnuFrame(39.66, -79.92)
+
+    def plan(self, elev, cls="tertiary", xy=None):
+        xy = bend(40.0) if xy is None else xy
+        la, lo, _ = self.FRAME.enu_to_geodetic(xy[:, 0], xy[:, 1], 0.0)
+        with mock.patch.object(grading, "RURAL_BANK_ON", True):
+            return grading.plan_roads(self.FRAME, [(np.c_[lo, la], spec(cls))], elev, cuts=False)[0]
+
+    def tilt(self, slope_north):
+        """Ground rising slope_north m per m toward the north (the frame's +y)."""
+        def elev(la, lo):
+            _e, n, _u = self.FRAME.geodetic_to_enu(np.asarray(la), np.asarray(lo), 0.0)
+            return 100.0 + slope_north * np.asarray(n)
+        return elev
+
+    def test_flat_ground_half_the_design_lean(self):
+        p = self.plan(self.tilt(0.0))
+        self.assertIsNotNone(p.bank)
+        self.assertAlmostEqual(float(-p.bank.min()), grading.RURAL_CURVE_SHARE * grading.RURAL_BANK_E_MAX, places=2)
+
+    def test_straight_road_on_a_hillside_leans_with_it(self):
+        xy = np.c_[np.arange(-300.0, 300.0, 2.0), np.zeros(300)]       # due east: its left is north
+        p = self.plan(self.tilt(0.04), xy=xy)
+        mid = p.bank[len(p.bank) // 3: 2 * len(p.bank) // 3]
+        np.testing.assert_allclose(mid, 0.04, atol=0.003)              # left (uphill) side high, as the land
+
+    def test_bend_against_the_hill_is_not_banked_in(self):
+        # the bend runs east, then turns left to the north; ground rising to the north lifts its inner (left) side:
+        # the land's lean (+5 % on the east leg) against the design rule's (-3 % in the bend) leaves no inward bank
+        p = self.plan(self.tilt(0.05))
+        flat = self.plan(self.tilt(0.0))
+        apex = np.array([40.0 * math.sin(math.pi / 4), 40.0 * (1 - math.cos(math.pi / 4))])
+        i = int(np.argmin(np.hypot(*(np.asarray(p.xy)[:, :2] - apex).T)))
+        i0 = int(np.argmin(np.hypot(*(np.asarray(flat.xy)[:, :2] - apex).T)))
+        self.assertLess(float(flat.bank[i0]), -0.01)                    # flat: leans in at the apex
+        self.assertGreater(float(p.bank[i]), -0.005)                    # against the hill: level or leaning out
+        self.assertGreater(float(p.bank.max()), 0.03)                  # leaning out (with the land) on the east leg
+        self.assertLessEqual(float(np.abs(p.bank).max()), grading.RURAL_TOTAL_MAX + 1e-9)
+
+    def test_off_plans_level_across(self):
+        xy = bend(40.0)
+        la, lo, _ = self.FRAME.enu_to_geodetic(xy[:, 0], xy[:, 1], 0.0)
+        with mock.patch.object(grading, "RURAL_BANK_ON", False):
+            p = grading.plan_roads(self.FRAME, [(np.c_[lo, la], spec("tertiary"))], self.tilt(0.05), cuts=False)[0]
+        self.assertIsNone(p.bank)
 
 
 if __name__ == "__main__":

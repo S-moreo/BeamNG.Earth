@@ -1118,6 +1118,28 @@ def plan_roads(frame, parts, elev, abut=None, ext=None, pins=None, cuts=True, co
     else:
         la, lo, _ = frame.enu_to_geodetic(allxy[:, 0], allxy[:, 1], 0.0)
         zall = np.asarray(elev(la, lo), np.float64)
+    leans = {}                          # (RURAL_LEAN_*: part j -> the measured cross slope of its core samples)
+    if RURAL_BANK_ON:
+        rq, rj = [], []
+        for j, ((_ll, spec), pr) in enumerate(zip(parts, prof)):
+            if pr is None or not (spec.kind in roadsmod.BUILT and rural_banked(spec)) or \
+                    (rings is not None and RING_LEVEL_ON and rings[j]):
+                continue
+            q = pr[0]
+            off = max(float(spec.width) / 2.0 - RURAL_LEAN_IN_M, RURAL_LEAN_MIN_OFF_M)
+            nrm = _normals(q)
+            rq.append(np.concatenate([q + nrm * off, q - nrm * off]))
+            rj.append((j, len(q), off))
+        if rq:
+            Q = np.concatenate(rq)
+            qla, qlo, _ = frame.enu_to_geodetic(Q[:, 0], Q[:, 1], 0.0)
+            zq = np.asarray(elev(qla, qlo), np.float64)
+            o = 0
+            for j, n, off in rj:
+                zl, zr = zq[o:o + n], zq[o + n:o + 2 * n]
+                o += 2 * n
+                lean = (zl - zr) / (2.0 * off)              # (+ raises the left: grading.bank's sign)
+                leans[j] = np.where(np.isfinite(lean), lean, 0.0)
     lines_ = []                         # (FAST_GAP: each landing's line, gap_line, the plain elevation on its approach)
     if len(rays):
         rla, rlo, _ = frame.enu_to_geodetic(rays[:, 0], rays[:, 1], 0.0)
@@ -1187,7 +1209,8 @@ def plan_roads(frame, parts, elev, abut=None, ext=None, pins=None, cuts=True, co
         p = _plan(xy, zx, spec, ab, (nb, na), step, bank_xy=bank_xy,
                   bank_ext=(len(bank_before), len(bank_after)),
                   banked=not (RING_LEVEL_ON and rings is not None and rings[j]), coarse=coarse,
-                  bank_abut=(ab[0] and not thr[0], ab[1] and not thr[1]) if thr != (False, False) else None)
+                  bank_abut=(ab[0] and not thr[0], ab[1] and not thr[1]) if thr != (False, False) else None,
+                  lean=leans.get(j))
         # (road roughness, PR #639 by subformatdnb: off unless BNE_BUMPS > 0; cached plans keep whatever they were
         # planned with, so a change takes effect on places planned after it)
         out.append(bumps.apply(frame, p, spec, ab) if bumps.SCALE > 0 else p)
@@ -1475,7 +1498,7 @@ def dirt_bumps(xy, spec, n, ext=(0, 0), step=PROFILE_STEP):
 
 
 def _plan(xy, z, spec, abut=(False, False), ext=(0, 0), step=PROFILE_STEP, bank_xy=None, bank_ext=None, banked=True,
-          coarse=False, bank_abut=None):
+          coarse=False, bank_abut=None, lean=None):
     """ext: (before, after), samples of z past the part's ends (plan_roads): smoothed with it, then dropped. step: m
     between the samples. bank_xy: the matching extended geometry, trimmed after the curvature/runoff pass. banked
     False: level across (a roundabout's ring)."""
@@ -1525,9 +1548,16 @@ def _plan(xy, z, spec, abut=(False, False), ext=(0, 0), step=PROFILE_STEP, bank_
     bext = ext if bank_ext is None else bank_ext
     b = bank(xy if bank_xy is None else bank_xy, spec, abut if bank_abut is None else bank_abut, bext) \
         if banked else None
+    if b is not None and bank_xy is not None:
+        b = b[bext[0]:len(bank_xy) - bext[1]]
+    if banked and built and lean is not None and len(lean) == len(xy) and rural_banked(spec):
+        # (lean: plan_roads' measured cross slope of the core samples, RURAL_LEAN_*)
+        fab = abut if bank_abut is None else bank_abut
+        lt = rural_lean(lean, step, (bool(fab[0] or not ext[0]), bool(fab[1] or not ext[1])))
+        b = np.clip(RURAL_CURVE_SHARE * (b if b is not None else 0.0) + lt, -RURAL_TOTAL_MAX, RURAL_TOTAL_MAX)
+        if not np.any(np.abs(b) > 1e-4):
+            b = None
     if b is not None:
-        if bank_xy is not None:
-            b = b[bext[0]:len(bank_xy) - bext[1]]
         if not built:           # a dirt road's lean: level across where it meets another road (after the trim: the
             sp = np.r_[0.0, np.cumsum(dnp.hypot(*np.diff(np.asarray(xy, np.float64)[:, :2], axis=0).T))]  # ramp
             b = b * dirt_taper(sp, float(sp[-1]))                                      # was trimmed away with ext)
@@ -1565,7 +1595,7 @@ RING_LEVEL_ON = os.environ.get("BNE_RING_LEVEL", "on") != "off"
 # bend). Not a town's streets (Spec.urban), a slip road, a mountain pass road (graded to its walls and parapets:
 # Plan.steep) or a roundabout's ring (RING_LEVEL_ON). BNE_RURAL_BANK=on (the settings page's "Banked country roads").
 RURAL_BANK_ON = os.environ.get("BNE_RURAL_BANK", "off") == "on"
-RURAL_BANK_E_MAX = 0.10
+RURAL_BANK_E_MAX = 0.06       # (0.10 at first: "feels too much like a racetrack", the user 2026-11-21)
 RURAL_BANK_DESIGN = {"primary": (90.0, 0.13), "secondary": (80.0, 0.14), "tertiary": (70.0, 0.15),
                      "unclassified": (60.0, 0.16), "residential": (50.0, 0.17)}    # km/h without a limit, friction
 RURAL_BANK_KMH = (40.0, 100.0)  # a mapped limit taken as the design speed within this
@@ -1573,6 +1603,43 @@ RURAL_BANK_STENCIL_M = 30.0
 RURAL_BANK_RUNOFF_M = 40.0
 RURAL_BANK_FADE_M = 30.0
 RURAL_BANK_SIGMA_M = 6.0
+# ... and the land first (the user: "respect terrain and not every road has inward banking"): the cross slope the
+# elevation shows across the carriageway itself (RURAL_LEAN_IN_M inside each edge: on lidar the real road's own fall,
+# a hillside road's lean toward the valley, a curve's real superelevation or its adverse camber; on the coarse model the
+# hillside's), smoothed over RURAL_LEAN_SIGMA_M along the road and held within RURAL_LEAN_MAX, plus RURAL_CURVE_SHARE of
+# the design rule's lean into the bend; the sum within RURAL_TOTAL_MAX. A bend against the hillside comes out level or
+# leaning out, one with it leans in more. Faded level over RURAL_BANK_FADE_M where the road meets a bridge or ends
+# without a road going on. (A crown, the fall from the middle to both edges, is not a single cross slope: not here.)
+RURAL_LEAN_IN_M = 0.75
+RURAL_LEAN_MIN_OFF_M = 1.0
+RURAL_LEAN_SIGMA_M = 10.0
+RURAL_LEAN_MAX = 0.08
+RURAL_CURVE_SHARE = 0.5
+RURAL_TOTAL_MAX = 0.08
+
+
+def rural_banked(spec):
+    """Does this road take the rural banking (RURAL_BANK_DESIGN: not a motorway / trunk's BANK_DESIGN)?"""
+    return getattr(spec, "cls", None) not in BANK_DESIGN and bank_design(spec) is not None
+
+
+def rural_lean(lean, step, fade):
+    """(n,) the cross slope a rural road takes from the land: the measured lean (n,) clipped, smoothed along the road
+    (step m apart) and faded to level over RURAL_BANK_FADE_M at the ends fade (start, end) flags. Pure."""
+    lt = np.clip(np.asarray(lean, np.float64), -RURAL_LEAN_MAX, RURAL_LEAN_MAX)
+    if len(lt) > 2 and step > 0.0:
+        lt = np.clip(smooth_profile(lt, step, RURAL_LEAN_SIGMA_M), -RURAL_LEAN_MAX, RURAL_LEAN_MAX)
+    if fade[0] or fade[1]:
+        sp = np.arange(len(lt)) * float(step)
+        w = np.ones(len(lt))
+        if fade[0]:
+            t = np.clip(sp / RURAL_BANK_FADE_M, 0.0, 1.0)
+            w *= t * t * (3.0 - 2.0 * t)
+        if fade[1]:
+            t = np.clip((sp[-1] - sp) / RURAL_BANK_FADE_M, 0.0, 1.0)
+            w *= t * t * (3.0 - 2.0 * t)
+        lt = lt * w
+    return lt
 
 
 def bank_design(spec):
