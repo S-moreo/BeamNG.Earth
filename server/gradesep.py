@@ -201,7 +201,7 @@ def _layer_rows(f):
                         sel &= roads.cycle_streets(f)
                     kinds[sel], halves[sel] = 0, st[0] / 2.0
             for i in np.flatnonzero(subs == "rail").tolist():
-                if railways.drawn(f, i) is not None:
+                if railways.drawn(f, i) is not None and not railways.bare(f, i):   # (an old bed: crossed level)
                     kinds[i], halves[i] = 1, RAIL_HALF_M
             fast.require(189, "gradesep_layer_rows")
             toff, trng, tkind = roads._tag_flat(f)

@@ -63,6 +63,35 @@ class RailTagsTest(unittest.TestCase):
             self.assertEqual(len(f._rail_nodes), 1)
             self.assertEqual(len(fetch.asked), n)
 
+    def test_gone_bridges_joined_only_with_the_abandoned_bed_switch(self):
+        """BNE_RAIL_ABANDONED=bed: osm_bridge_gone holds the ranges of a rail segment whose OSM way's bridge is gone
+        (bridge=razed ...), each way's own range on a segment of several (the src_ways rule); a standing bridge
+        (bridge=yes) none. Off: no such attr (the layers as before)."""
+        from unittest import mock
+        f0 = features([[(0.0, 100.0), (250.0, 100.0)]], ["standard_gauge"], subtypes=["rail"])
+        lo, la = f0.lonlat[0]
+        key = mapcells.cell_of(float(la), float(lo))
+        sx, sy = key.x >> (key.z - 7), key.y >> (key.z - 7)
+        shard = {"ways": {"11": {"railway": "abandoned", "bridge": "razed"}, "12": {"railway": "abandoned"},
+                          "13": {"railway": "abandoned", "bridge": "yes"}}, "nodes": []}
+
+        def joined(on):
+            f = features([[(0.0, 100.0), (250.0, 100.0)], [(0.0, 120.0), (250.0, 120.0)],
+                          [(0.0, 140.0), (250.0, 140.0)], [(0.0, 0.0), (5.0, 5.0)]],
+                         ["unknown"] * 3 + ["residential"], subtypes=["rail"] * 3 + ["road"])
+            f.attrs["src_record"] = np.array(["w11@1", "w12@1", "w13@1", "w11@1"])
+            f.rules["src_ways"] = mapgeom.rule_table([(1, "w12@1", (0.0, 0.6)), (1, "w11@1", (0.6, 0.7)),
+                                                      (1, "w12@1", (0.7, 1.0))], "text")
+            fetch = _Fetcher({"manifest.json": json.dumps({"built": "2026-10-30T03:00:00Z"}).encode(),
+                              f"/{sx}/{sy}.json.gz": gzip.compress(json.dumps(shard).encode())})
+            with tempfile.TemporaryDirectory() as d, mock.patch.object(railtags, "BRIDGE_GONE_ON", on):
+                railtags.RailTags(d, fetch).join(f, key)
+            return f
+        self.assertNotIn("osm_bridge_gone", joined(False).attrs)
+        got = [None if v is None else [tuple(round(float(x), 3) for x in ab.split(":")) for ab in v.split()]
+               for v in joined(True).attrs["osm_bridge_gone"]]
+        self.assertEqual(got, [[(0.0, 1.0)], [(0.6, 0.7)], None, None])
+
     def test_preserved_joined_only_with_the_lifecycle_switch(self):
         """railway:preserved (a heritage line, railways.heritage) is an attr only with BNE_RAIL_LIFECYCLE: off, the
         road layer (and its cache) is the same whichever shard build it was joined from; an old shard (no such tag)

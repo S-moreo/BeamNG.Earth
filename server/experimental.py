@@ -38,6 +38,9 @@ FEATURES = (
                        "BNE_RACEWAY_PROPS": "on",
                        # railways at roads (the user's reports r61-r64, r80, r92)
                        "BNE_RAIL_ROAD_FIT": "on", "BNE_RAIL_SEAM_NATURAL": "on",
+                       # abandoned railways as their grown-over bed, no rails, crossings or razed bridges (railways
+                       # ABANDONED_BED: the Hilliards Branch through Boyers PA, 2026-11-22)
+                       "BNE_RAIL_ABANDONED": "bed",
                        # road revamp v2, "road shape first" (the user, 2026-11-19: "put them under revamped roads. Have
                        # that toggle include the latest and what would be the final roads"): vanilla-style cut and fill
                        # slopes with rocks and wall-foot skirts (P1a), decks that follow the road's curve and bank

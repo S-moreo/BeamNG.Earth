@@ -35,6 +35,13 @@ COLUMNS = ("railway", "gauge", "electrified", "service", "usage", "highway")    
 # with the switch off a shard carrying them changes neither the cached road layers nor the decisions' digests.
 LIFECYCLE_ON = os.environ.get("BNE_RAIL_LIFECYCLE", "off") == "on"     # (railways.RAIL_LIFECYCLE's switch)
 LIFECYCLE_TAGS = ("railway:preserved",)
+# With BNE_RAIL_ABANDONED=bed (railways.ABANDONED_BED's switch) a rail segment's ranges whose OSM way's bridge is gone
+# (bridge=razed ...: Overture still flags such a range is_bridge, and a deck was built where none stands), attr
+# osm_bridge_gone: None, or its "start:end" fractions joined by spaces. Joined only then (as LIFECYCLE_TAGS): with the
+# switch off, the layers are as before.
+BRIDGE_GONE_ON = os.environ.get("BNE_RAIL_ABANDONED", "worn") == "bed"
+BRIDGE_GONE = frozenset(("razed", "dismantled", "demolished", "destroyed", "removed", "collapsed", "ruins", "ruined",
+                         "washed_out", "washed-out", "filled", "abutment", "abutments", "no"))
 
 
 def rail_columns():
@@ -344,10 +351,36 @@ class RailTags(Shards):
                     cols[c][i] = t.get(c)
         for c in columns:
             feats.attrs["osm_" + c] = cols[c]
+        if BRIDGE_GONE_ON:
+            feats.attrs["osm_bridge_gone"] = _bridges_gone(feats, rail, found, ways)
         lon0, lat0, lon1, lat1 = (float(v) for v in key.bounds())
         pad = 0.002
         feats.__dict__["_rail_nodes"] = [(lo, la, t) for _id, lo, la, t in sh.get("nodes", ())
                                          if lon0 - pad <= lo <= lon1 + pad and lat0 - pad <= la <= lat1 + pad]
+
+
+def _bridges_gone(feats, rail, found, ways):
+    """osm_bridge_gone (BRIDGE_GONE_ON) of feats' rail features rail, found their main way's tags: a feature of one way
+    the whole of it where that way's bridge is gone; one of several (the "src_ways" rule) each such way's range."""
+    out = np.full(len(feats), None, object)
+    for i, t in zip(rail, found):
+        if t and str(t.get("bridge")) in BRIDGE_GONE:
+            out[i] = "0:1"
+    table = feats.rules.get("src_ways")
+    if table is None or not len(table):
+        return out
+    is_rail = np.zeros(len(feats), bool)
+    is_rail[rail] = True
+    f = np.asarray(table.feature, np.int64)
+    rows = np.flatnonzero((f >= 0) & (f < len(feats)))
+    rows = rows[is_rail[f[rows]]]
+    spans = {int(i): [] for i in f[rows]}
+    for k, t in zip(rows.tolist(), _tags_of(ways, [way_id(str(table.value[k])) or "" for k in rows.tolist()])):
+        if t and str(t.get("bridge")) in BRIDGE_GONE:
+            spans[int(f[k])].append(f"{float(table.start[k]):.6g}:{float(table.end[k]):.6g}")
+    for i, sp in spans.items():
+        out[i] = " ".join(sp) or None
+    return out
 
 
 LANES_ON = os.environ.get("BNE_LANETAGS", "on") != "off"

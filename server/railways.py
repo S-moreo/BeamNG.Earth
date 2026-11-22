@@ -84,12 +84,17 @@ FOOT_CLEAR = os.environ.get("BNE_FOOT_CLEAR", "off") == "on"
 # lines across country roads in South Wales, Rheinland-Pfalz, Indiana). BNE_RAIL_LIFECYCLE=on; off by default until
 # reviewed in game (a disused street track, as Fells Point's trolley lines, then stops at every street it crosses).
 RAIL_LIFECYCLE = os.environ.get("BNE_RAIL_LIFECYCLE", "off") == "on"
-# Abandoned railways (wear 2: OSM's railway=abandoned, Overture's is_abandoned) not built at all with
-# BNE_RAIL_ABANDONED=hide: OSM tags a line abandoned once its rails are gone (what is left is the old bed, often a road,
-# a trail or nothing), yet the worn track was laid along it with its level crossings, its bed cleared of buildings and
-# the roads it crosses separated over it: the Hilliards Branch through Boyers PA ran as a railway through the town
-# (Smore's report, 2026-11-22). Disused lines (wear 1: rails still in place) are drawn as before.
-ABANDONED_HIDE = os.environ.get("BNE_RAIL_ABANDONED", "worn") == "hide"
+# Abandoned railways (wear 2: OSM's railway=abandoned, Overture's is_abandoned) as their old bed alone with
+# BNE_RAIL_ABANDONED=bed. OSM tags a line abandoned once its rails are gone, yet a worn track was laid along it, with
+# level crossings, its bed cleared of buildings, roads lifted over it and bridges where the map's bridge is long gone
+# (bridge=razed): the Hilliards Branch through Boyers PA ran as a railway through the town (Smore's report,
+# 2026-11-22). With the switch an abandoned line is its grown-over bed (no rails, sleepers or rail colliders:
+# BARE_WEARS, earthfast's rail mesh), cut at every road it crosses (WORN_CUT_CLASSES), standing over nothing: no
+# building cleared off it (buildings.rail_lines), no road separated over it (gradesep, roads' deck headroom, grading's
+# approaches) and only the bridges OSM still has standing (_level_ranges: railtags' osm_bridge_gone). Disused lines
+# (wear 1: rails still in place) are as before. Off by default until reviewed in game.
+ABANDONED_BED = os.environ.get("BNE_RAIL_ABANDONED", "worn") == "bed"
+BARE_WEARS = frozenset({2}) if ABANDONED_BED else frozenset()      # (read by earthfast's rail_tile_mesh, 603)
 # Railway-at-road fixes (the user's in-game reports r63 / r64 / r92, 2026-11-17; the Revamped roads switch set): a track
 # that ends at a road with its line going on beyond it (a worn line cut at the road, a siding mapped up to each side of
 # a paved-over crossing) gets no buffer stop there (dead_ends, _road_ends); a level crossing is one record per track
@@ -333,7 +338,7 @@ def parts(frame, cells, box, reach=REACH_M, clip=False, worn=None, gauges=None, 
     # any, as _pieces)
     idx = [_rail_index(feats, frame) if feats is not None and len(feats) and "subtype" in feats.attrs else None
            for feats in cells]
-    out = fast._ef.rail_parts_select(idx, cells, tuple(float(v) for v in near), roads.level_ranges, roads.ground_parts,
+    out = fast._ef.rail_parts_select(idx, cells, tuple(float(v) for v in near), _level_ranges, roads.ground_parts,
                                      wear_of, kept, gauges, TUNNELS_ON, RAIL_LIFECYCLE)
     if any(kind == "ground" and wear_of.get(fid) for fid, _c, kind, _xy in out):
         out = _cut_worn_at_motorways(out, wear_of, motorway_crossings(frame, cells, box, reach), kept, cut_ends)
@@ -830,7 +835,7 @@ def _drawn_cols(feats):
     other side of half a line, the same answer as every other install."""
     a, t = feats.attrs, feats.rules.get("flags")
     src = (a.get("subtype"), a.get("class"), a.get("osm_railway"), a.get("osm_highway"), t,
-           *((t.feature, t.start, t.end, t.value) if t is not None else ()), RAIL_LIFECYCLE, ABANDONED_HIDE)
+           *((t.feature, t.start, t.end, t.value) if t is not None else ()), RAIL_LIFECYCLE)
     got = feats.__dict__.get("_rail_drawn")
     if got is not None and len(got[0]) == len(src) and all(x is y for x, y in zip(got[0], src)):
         return got[1]
@@ -841,10 +846,6 @@ def _drawn_cols(feats):
         fl = (np.ascontiguousarray(t.feature, np.int64), np.ascontiguousarray(t.start, np.float64),
               np.ascontiguousarray(t.end, np.float64), _str_rows(t.value))
     plain, br, w = fast._ef.rail_drawn_cols(len(feats), *(_str_rows(c) for c in src[:4]), fl, RAIL_LIFECYCLE)
-    if ABANDONED_HIDE:
-        gone = w == 2                   # (abandoned: drawn()'s wear)
-        plain[gone] = -1
-        br[gone] = -1
     cols = (plain.tolist(), br.tolist(), w.tolist())
     feats.__dict__["_rail_drawn"] = (src, cols)
     return cols
@@ -882,10 +883,31 @@ def osm_gauge(feats, i):
     return mm / 1000.0 if 381 <= mm <= 1676 else None
 
 
+def bare(feats, i):
+    """Is feature i drawn as its bed alone (BNE_RAIL_ABANDONED=bed: an abandoned line, BARE_WEARS)?"""
+    if not BARE_WEARS or "subtype" not in feats.attrs or str(feats.attrs["subtype"][i]) != "rail":
+        return False
+    got = drawn(feats, i)
+    return got is not None and got[1] in BARE_WEARS
+
+
+def _level_ranges(feats, i):
+    """roads.level_ranges of a rail feature, with BNE_RAIL_ABANDONED=bed an abandoned line's bridges OSM has gone
+    (railtags' osm_bridge_gone: a bridge=razed / dismantled / washed_out ... way, which Overture still flags is_bridge)
+    of kind "gone": neither bridge nor ground, nothing drawn there (_pieces_of, earthfast's rail_parts_select)."""
+    rngs = roads.level_ranges(feats, i)
+    gone = feats.attrs.get("osm_bridge_gone") if ABANDONED_BED and rngs else None
+    if gone is None or not gone[i] or not bare(feats, i):
+        return rngs
+    spans = [tuple(float(v) for v in ab.split(":")) for ab in str(gone[i]).split()]
+    return [(a, b, "gone" if k == "bridge" and any(min(b, d) - max(a, c) >= 0.5 * (b - a) for c, d in spans) else k)
+            for a, b, k in rngs]
+
+
 def _pieces(feats, i):
     """[("ground" | "bridge" | "tunnel", [lon/lat polylines])] of feature i: its level ranges with the short tunnels
     (SHORT_TUNNEL_M) on the ground and the long ones left out (BNE_RAIL_TUNNELS: a part of their own, kind "tunnel")."""
-    rngs = roads.level_ranges(feats, i)
+    rngs = _level_ranges(feats, i)
     if not rngs:
         return [("ground", roads.ground_parts(feats, i))]
     # (remembered on the layer per feature and its ranges, which are asked every time (the lidar rule's revisit fault
@@ -948,7 +970,7 @@ def _road_crossings(frame, cells, box, reach, worn):
             classes = feats.attrs.get("class")
             if classes is None:
                 continue
-            if RAIL_LIFECYCLE:
+            if RAIL_LIFECYCLE or ABANDONED_BED:      # (WORN_CUT_CLASSES then holds every road class)
                 sub = feats.attrs.get("subtype")
                 eligible = None if sub is None else _is(sub, ("road",))
             else:
@@ -978,7 +1000,7 @@ def walk_cut_lines(frame, cells, box, reach=60.0):
             if fid in seen:
                 continue
             seen.add(fid)
-            if drawn(feats, i) is None:
+            if drawn(feats, i) is None or bare(feats, i):     # (a sidewalk runs on over an old bed)
                 continue
             for kind, rings in _pieces(feats, i):
                 if kind != "ground":
@@ -1021,6 +1043,9 @@ WORN_CUT_CLASSES = {1: {"motorway"}, 2: {"motorway", "trunk"}}
 HERITAGE_CUT_CLASSES = WORN_CUT_CLASSES     # (a heritage line's: 1.9.0's, with the lifecycle switch too)
 if RAIL_LIFECYCLE:                  # (every road class: roads.STYLE's)
     WORN_CUT_CLASSES = {1: frozenset(roads.STYLE), 2: frozenset(roads.STYLE)}
+if ABANDONED_BED:                   # (an old bed has no level crossings: it stops at every road)
+    WORN_CUT_CLASSES = {**WORN_CUT_CLASSES, 2: frozenset(roads.STYLE)}
+    HERITAGE_CUT_CLASSES = {**HERITAGE_CUT_CLASSES, 2: frozenset(roads.STYLE)}
 WORN_CUT_MIN_SIN = 0.2      # (a crossing flatter than this cuts as if at this angle: the cut stays bounded)
 
 

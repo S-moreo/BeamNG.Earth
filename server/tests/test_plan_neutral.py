@@ -69,7 +69,7 @@ PLANS_READ = ("BNE_BUMPS", "BNE_DIRT_BANK", "BNE_DIRT_BUMP", "BNE_ENTRANCE_FLARE
               "BNE_TUNNEL_LIDS",
               # (the Revamped roads setting: tapers, deck K, level spacing, footbridges, rail lifecycle, raceways)
               "BNE_DECK_K_SPEED", "BNE_RACEWAY_DIG", "BNE_FAST_DECK_ENDS", "BNE_FAST_GAP", "BNE_FAST_DECK_GROUND", "BNE_RAIL_LIFECYCLE",
-              "BNE_RAIL_SEAM_NATURAL",
+              "BNE_RAIL_SEAM_NATURAL", "BNE_RAIL_ABANDONED",
               "BNE_SPEED_TAPERS",
               # (road revamp v2 in the Revamped roads setting, 2026-11-19)
               "BNE_BATTER", "BNE_ROADSHAPE", "BNE_SIDEWALK_V2", "BNE_ROADSURF_V3")

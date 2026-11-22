@@ -3518,7 +3518,7 @@ def rail_lines(frame, road_layers, x0, y0, margin=50.0, size=256.0):
                               & (bb[:, 3] - y0 >= -margin) & (bb[:, 1] - y0 <= size + margin))
         for i in near.tolist():
             got = railways.drawn(f, i)
-            if got is None or got[0] == "tram":
+            if got is None or got[0] == "tram" or railways.bare(f, i):    # (an old bed: the houses on it stay)
                 continue
             for ll in roadsmod.ground_parts(f, i):
                 if len(ll) < 2:

@@ -7641,6 +7641,7 @@ fn earthfast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     roadsysbind::register(m)?;
     // 599: unalign::collider_unalign (colliders off the axis-aligned lattice, cdae.COLLIDER_UNALIGN_M)
     unalign::register(m)?;
-    m.add("VERSION", 602)?;
+    // 603: rail_tile_mesh draws the lines of a wear in railways.BARE_WEARS as their bed alone (BNE_RAIL_ABANDONED=bed)
+    m.add("VERSION", 603)?;
     Ok(())
 }

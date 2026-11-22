@@ -7934,9 +7934,10 @@ CHAIN_MARGIN = 1
 
 
 def _rail_drawn(feats, i):
-    """Is feature i a railway line drawn on the map (railways.drawn: worn ones too)?"""
+    """Is feature i a railway line drawn on the map (railways.drawn: worn ones too; an abandoned line's old bed,
+    railways.bare, not: no headroom over it)?"""
     import railways
-    return railways.drawn(feats, i) is not None
+    return railways.drawn(feats, i) is not None and not railways.bare(feats, i)
 
 
 def _clearance_deficits(lines, zs, crossings, depth=None):

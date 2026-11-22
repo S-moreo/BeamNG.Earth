@@ -243,6 +243,8 @@ impl<'p> Tile<'p> {
         }
         let (mut u, mut s) = line_axes(&p);
         let w: usize = self.worn.call_method1("get", (&fid, 0))?.extract()?;
+        // (a wear in railways.BARE_WEARS: the bed alone, no rails, sleepers or rail colliders: BNE_RAIL_ABANDONED=bed)
+        let bare = self.rw.getattr("BARE_WEARS")?.contains(w)?;
         let rw = self.rw.clone();
         let mat = |name: &str| -> PyResult<String> { rw.getattr(name)?.get_item(w)?.extract() };
         let ballast = self.mesh.borrow_mut().mat(&mat("BALLAST_WORN")?);
@@ -411,6 +413,9 @@ impl<'p> Tile<'p> {
                         .append((piers, 1.4 / 2., pw / 2., self.concrete))?;
                 }
             }
+            if bare {
+                continue;
+            }
             run.heads(&mut self.mesh.borrow_mut(), half_g, steel, tram, false);
             if !tram {
                 let gone = self.rw.getattr("SLEEPERS_GONE")?.get_item(w)?;
@@ -427,7 +432,7 @@ impl<'p> Tile<'p> {
                 }
             }
         }
-        if !tram {
+        if !tram && !bare {
             let mask: Vec<_> = inside.iter().zip(sw).map(|(i, s)| !i || s).collect();
             for (i, j) in runs(&mask) {
                 let k = i..=j;

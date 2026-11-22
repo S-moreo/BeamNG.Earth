@@ -5260,7 +5260,7 @@ class _Planner:
                 for kind, rings in railways._pieces(f, i):
                     if kind == "bridge":
                         rail += [np.asarray(r, np.float64) for r in rings if len(r) >= 2]
-                    elif kind == "ground" and ground and got[0] != "tram":
+                    elif kind == "ground" and ground and got[0] != "tram" and not railways.bare(f, i):
                         # (and the tracks on the ground: a road bridge's approaches rise over them as over a road,
                         # GitHub #324)
                         rail_g += [np.asarray(r, np.float64) for r in rings if len(r) >= 2]

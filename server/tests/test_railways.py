@@ -13,6 +13,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import railways  # noqa: E402
+import gradesep  # noqa: E402
 import roads  # noqa: E402
 from test_roads import FRAME, features  # noqa: E402
 
@@ -573,20 +574,46 @@ class RailwayTest(unittest.TestCase):
         self.assertEqual(railways.drawn(f, 1), ("standard_gauge", 2))
         self.assertEqual(railways.drawn(f, 2), ("standard_gauge", 0), "a street running track in use is drawn")
 
-    def test_abandoned_lines_hidden_with_the_switch(self):
-        """BNE_RAIL_ABANDONED=hide: an abandoned line (OSM's tag or Overture's flag: its rails gone) is not built, on
-        the ground or as a bridge (the Hilliards Branch through Boyers PA, 2026-11-22); a disused one and a line in
-        use are drawn as before."""
-        f = features([[(0.0, 100.0), (250.0, 100.0)], [(0.0, 120.0), (250.0, 120.0)], [(0.0, 140.0), (250.0, 140.0)],
-                      [(0.0, 160.0), (250.0, 160.0)]],
-                     ["standard_gauge", "unknown", "standard_gauge", "standard_gauge"], subtypes=["rail"] * 4,
-                     flags=[(1, "is_abandoned"), (2, "is_disused")])
-        f.attrs["osm_railway"] = np.array(["abandoned", None, None, "rail"], object)
-        self.assertEqual(railways.drawn(f, 0), ("standard_gauge", 2), "worn, by default")
-        with mock.patch.object(railways, "ABANDONED_HIDE", True):
-            got = [railways.drawn(f, i) for i in range(4)] + [railways.drawn(f, i, bridges=True) for i in (0, 1)]
-        self.assertEqual(got, [None, None, ("standard_gauge", 1), ("standard_gauge", 0), None, None])
-        self.assertEqual(railways.drawn(f, 1), ("standard_gauge", 2), "the switch is part of the layer's memo")
+    def test_abandoned_line_as_its_bed_with_the_switch(self):
+        """BNE_RAIL_ABANDONED=bed (the Hilliards Branch through Boyers PA, 2026-11-22): an abandoned line (its rails
+        gone) is its bed alone, cut at the street it crosses, no bridge where OSM has its bridge gone (bridge=razed:
+        railtags' osm_bridge_gone) and a standing one kept; nothing crossed over it (gradesep, roads' headroom) or
+        cleared off it. A disused line is as before."""
+        f = features([[(0.0, 60.0), (250.0, 60.0)], [(0.0, 120.0), (250.0, 120.0)], [(0.0, 180.0), (250.0, 180.0)],
+                      [(120.0, 0.0), (120.0, 240.0)]],
+                     ["standard_gauge", "unknown", "standard_gauge", "residential"], subtypes=["rail"] * 3 + ["road"],
+                     flags=[(0, "is_abandoned"), (0, "is_bridge", 0.7, 0.8), (1, "is_abandoned"),
+                            (1, "is_bridge", 0.7, 0.8), (2, "is_disused")])
+        f.attrs["osm_bridge_gone"] = np.array(["0.7:0.8", None, None, None], object)
+        hw = roads.STYLE["residential"][0] / 2
+
+        def over(rails, fid, x, kind="ground", h=hw):
+            return any(((xy[:, 0] > x - h) & (xy[:, 0] < x + h)).any() for i, _c, k, xy in rails
+                       if i == fid and k == kind)
+        on = (mock.patch.object(railways, "ABANDONED_BED", True), mock.patch.object(railways, "BARE_WEARS", {2}),
+              mock.patch.object(railways, "WORN_CUT_CLASSES", {1: {"motorway"}, 2: frozenset(roads.STYLE)}))
+        before = railways.parts(FRAME, [f], roads.tile_bbox(0, 0))
+        self.assertTrue(over(before, "id000", 120.0) and over(before, "id000", 187.5, "bridge"), "off: as before")
+        self.assertFalse(railways.bare(f, 0))
+        with on[0], on[1], on[2]:
+            rails = railways.parts(FRAME, [f], roads.tile_bbox(0, 0))
+            self.assertEqual([railways.bare(f, i) for i in range(4)], [True, True, False, False])
+            self.assertFalse(roads._rail_drawn(f, 0), "no headroom over an old bed")
+            self.assertEqual(gradesep._layer_rows(f)[0][:3].tolist(), [-1, -1, 1], "not a line to cross over")
+            P, T, _uv, mats, tm = railways.tile_mesh(FRAME, 0, 0, [f], lambda xy: np.full(len(xy), 100.0))
+        self.assertFalse(over(rails, "id000", 120.0), "the bed stops at the street")
+        self.assertFalse(over(rails, "id000", 187.5, "bridge"), "no bridge where OSM has it razed")
+        self.assertTrue(over(rails, "id001", 187.5, "bridge"), "a standing bridge kept")
+        self.assertTrue(over(rails, "id002", 120.0), "a disused line keeps its level crossing")
+        used = {mats[k] for k in np.unique(tm)}
+        self.assertIn("bne_rail_ballast_grown", used, "the grown-over bed drawn")
+        y = P[:, 1]
+        for k, name in enumerate(mats):
+            if name in (railways.COLLIDER,) + railways.STEEL_WORN + railways.SLEEPER_WORN:
+                tri = T[np.asarray(tm) == k]
+                self.assertFalse(((y[tri] > 50.0) & (y[tri] < 130.0)).any(), f"no {name} on an abandoned line")
+                if name in (railways.COLLIDER, railways.STEEL_WORN[1], railways.SLEEPER_WORN[1]):
+                    self.assertTrue(((y[tri] > 170.0) & (y[tri] < 190.0)).any(), f"the disused line's {name}")
 
     def test_drawn_follows_columns_added_after_a_first_ask(self):
         """drawn() keeps a layer's answers (earthfast.rail_drawn_cols) only while its columns are the same: the OSM
