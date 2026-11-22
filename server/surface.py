@@ -80,10 +80,15 @@ MATERIALS = (
     ("bngEarthGroundDryGrass", "GRASS"),
     ("bngEarthGroundCrop", "DIRT"),
     ("bngEarthGroundSand", "SAND"),
+    # An abandoned railway's old bed (BNE_RAIL_ABANDONED=bed, railways.py): gravel to the tyres, and a GroundCover layer
+    # of its own (groundcover.lua): sparse grass blades up through the bed's gravel (Smore, 2026-11-22: "it needs grass
+    # blades"). Painted under the bed by paint_roads.
+    ("bngEarthGroundRailBed", "GRAVEL"),
 )
 ASPHALT, GRASS, DUSTY, LOOSE, ROCK, SNOW, MUD, COBBLE, LAWN, \
     GOLF_ROUGH, GOLF_FAIRWAY, GOLF_GREEN, GOLF_BUNKER, PAVERS, BRICK, DIRT, \
-    FOREST, DRYGRASS, CROP, SAND = range(len(MATERIALS))
+    FOREST, DRYGRASS, CROP, SAND, RAIL_BED = range(len(MATERIALS))
+RAIL_BED_EDGE_M = 0.4       # m the bed's layer reaches past the gravel's top (railways.BALLAST_TOP_M): its shoulders
 # WorldCover class -> material (§5.4 of the world-data research). Built-up land is the plain dirt layer
 # (2026-10-14): its yards, lawns and lots took the asphalt layer's grey detail and macro textures, which
 # washed whole towns pale grey in the street photos (Moab, Frederick); the roads are painted asphalt anyway
@@ -226,6 +231,7 @@ def paint_roads(idx, lat, lon, feats_list, square, urban_fn=None, widths=None, e
     corners, no width tapers: nothing that waits on the session's lidar decisions, roads.quick_ground_parts; the
     tapers' bridge specs held a cold Bozeman stand-in 16.5 s). Pure (a new array)."""
     import europewalks
+    import railways
 
     european = europewalks.enabled()
     h, w = idx.shape
@@ -255,6 +261,7 @@ def paint_roads(idx, lat, lon, feats_list, square, urban_fn=None, widths=None, e
             pavement = roadsurf3.paint_coverage(geom, np.c_[c + 0.5, r + 0.5], w, h, False).any(axis=0)
     segs = {k: ([], []) for k in ROAD_ORDER}    # kind -> (segments (m, 4) in samples, half widths in samples)
     lawn, verge, grass_verge = ([], []), ([], []), ([], [])
+    rail_bed = ([], [])
     footpaths = ([], [])
     seen = set()
     # The rural grass treatment is local to Romania and Hungary.
@@ -332,6 +339,14 @@ def paint_roads(idx, lat, lon, feats_list, square, urban_fn=None, widths=None, e
             if fid in seen:
                 continue
             if specs[i] is None:
+                if railways.BARE_WEARS and railways.bare(feats, i):     # (an old bed: its own layer, RAIL_BED)
+                    seen.add(fid)
+                    for kind, rings in railways._pieces(feats, i):
+                        for ring in rings if kind == "ground" else ():
+                            c, r = to_px(ring[:, 0], ring[:, 1])
+                            add(rail_bed, np.asarray(c, np.float64), np.asarray(r, np.float64),
+                                railways.BALLAST_TOP_M + RAIL_BED_EDGE_M)
+                    continue
                 m = 4. / square + 2.
                 if (european and c_hi[i] >= -m and c_lo[i] <= w + m
                         and r_hi[i] >= -m and r_lo[i] <= h + m):
@@ -394,6 +409,8 @@ def paint_roads(idx, lat, lon, feats_list, square, urban_fn=None, widths=None, e
 
     out = idx.copy()
     out[mask(lawn)] = LAWN
+    if rail_bed[0]:
+        out[mask(rail_bed)] = RAIL_BED
     # roundabout footprints: lawn under the grass photo fill (photo_roads), so tyres feel grass not asphalt scar
     for lonlat in _island_lonlat_rings(feats_list, urban_fn, widths, lat0=la_c, lon0=lo_c, lat=lat, lon=lon,
                                        quick=quick):

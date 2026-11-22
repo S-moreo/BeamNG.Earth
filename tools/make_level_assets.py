@@ -205,9 +205,12 @@ LOOKS = {
                                "grass/macro_dry_grass_02/t_macro_dry_grass_02", 8, 0.25, (0.12, 0.08)),
     "bngEarthGroundCrop": ("soil/dirt_crumbly/t_dirt_crumbly", 1, "soil/macro_holes/t_macro_holes", 8, 0.25, (0.12, 0.08)),
     "bngEarthGroundSand": ("sand/t_sand/t_sand", 1, "sand/t_macro_sand/t_macro_sand", 16, 0.25, (0.12, 0.08)),
+    # (server/surface.py RAIL_BED, 2026-11-22) an abandoned railway's old bed: the gravel's grain under the bed's mesh
+    "bngEarthGroundRailBed": ("soil/t_gravel/t_gravel", 1, "soil/t_macro_flows/t_macro_flows", 4, 0.3, (0.2, 0.12)),
 }
 NEW_GROUND = (("bngEarthGroundForest", "GRASS", 70), ("bngEarthGroundDryGrass", "GRASS", 71),
-              ("bngEarthGroundCrop", "DIRT", 72), ("bngEarthGroundSand", "SAND", 73))
+              ("bngEarthGroundCrop", "DIRT", 72), ("bngEarthGroundSand", "SAND", 73),
+              ("bngEarthGroundRailBed", "GRAVEL", 74))
 SURFACES = {}
 for i, name in enumerate(("bngEarthGroundAsphalt", "bngEarthGroundGrass", "bngEarthGroundDusty", "bngEarthGroundLoose",
                           "bngEarthGroundRock", "bngEarthGroundSnow", "bngEarthGroundMud", "bngEarthGroundLawn")):

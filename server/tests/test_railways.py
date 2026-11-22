@@ -604,7 +604,10 @@ class RailwayTest(unittest.TestCase):
             self.assertEqual([railways.bare(f, i) for i in range(4)], [True, True, False, False])
             self.assertFalse(roads._rail_drawn(f, 0), "no headroom over an old bed")
             self.assertEqual(gradesep._layer_rows(f)[0][:3].tolist(), [-1, -1, 1], "not a line to cross over")
-            P, T, _uv, mats, tm = railways.tile_mesh(FRAME, 0, 0, [f], lambda xy: np.full(len(xy), 100.0))
+            # (a 3 m dip under the lines at x = 60: a working line's bed rides over it, an old one lies in it)
+            def dip(xy):
+                return 100.0 - 3.0 * np.exp(-((np.asarray(xy)[:, 0] - 60.0) / 15.0) ** 2)
+            P, T, _uv, mats, tm = railways.tile_mesh(FRAME, 0, 0, [f], dip)
         self.assertFalse(over(rails, "id000", 120.0), "the bed stops at the street")
         self.assertFalse(over(rails, "id000", 187.5, "bridge"), "no bridge where OSM has it razed")
         self.assertTrue(over(rails, "id001", 187.5, "bridge"), "a standing bridge kept")
@@ -617,12 +620,48 @@ class RailwayTest(unittest.TestCase):
                                "art", "shapes", "beamngEarth", "tunnel.materials.json")) as fh:
             self.assertIn(railways.BED_OVERGROWN, json.load(fh), "its material in the mod")
         y = P[:, 1]
+        bed = T[np.asarray(tm) == mats.index(railways.BED_OVERGROWN)].ravel()
+        bed = bed[(y[bed] > 110.0) & (y[bed] < 130.0) & (P[bed, 0] > 20.0) & (P[bed, 0] < 100.0)]
+        self.assertTrue(len(bed))
+        self.assertLessEqual(float((P[bed, 2] - dip(P[bed])).max()), railways.BED_LIFT_M + 1e-3,
+                             "the old bed on the ground in the dip, no fill bank (Boyers PA)")
         for k, name in enumerate(mats):
             if name in (railways.COLLIDER,) + railways.STEEL_WORN + railways.SLEEPER_WORN:
                 tri = T[np.asarray(tm) == k]
                 self.assertFalse(((y[tri] > 50.0) & (y[tri] < 130.0)).any(), f"no {name} on an abandoned line")
                 if name in (railways.COLLIDER, railways.STEEL_WORN[1], railways.SLEEPER_WORN[1]):
                     self.assertTrue(((y[tri] > 170.0) & (y[tri] < 190.0)).any(), f"the disused line's {name}")
+
+    def test_abandoned_bed_has_its_grassy_ground_layer(self):
+        """BNE_RAIL_ABANDONED=bed: the ground under an old bed is surface.RAIL_BED (gravel to the tyres, its own
+        GroundCover's grass blades: groundcover.lua), the street across it still the street's, a working line's ground
+        as it was. The layer is in the level's terrain materials, its look in terrain.lua."""
+        import surface
+        from test_roads import LAT, LON, M_LAT, M_LON
+        f = features([[(0.0, 60.0), (250.0, 60.0)], [(0.0, 120.0), (250.0, 120.0)], [(120.0, 0.0), (120.0, 240.0)]],
+                     ["standard_gauge", "standard_gauge", "residential"], subtypes=["rail", "rail", "road"],
+                     flags=[(0, "is_abandoned")])
+        square = 1.0
+        xs, ys = np.meshgrid(np.arange(0.0, 250.0, square), np.arange(0.0, 240.0, square))
+
+        def paint():
+            return surface.paint_roads(np.full(xs.shape, surface.GRASS, np.uint8), LAT + ys / M_LAT, LON + xs / M_LON,
+                                       [f], square)
+        self.assertFalse((paint() == surface.RAIL_BED).any(), "off: nothing")
+        with mock.patch.object(railways, "ABANDONED_BED", True), mock.patch.object(railways, "BARE_WEARS", {2}):
+            out = paint()
+        self.assertEqual(out[60, 60], surface.RAIL_BED)
+        self.assertEqual(out[61, 200], surface.RAIL_BED, "its width")
+        self.assertEqual(out[66, 60], surface.GRASS, "only the bed's")
+        self.assertNotEqual(out[60, 120], surface.RAIL_BED, "the street across it")
+        self.assertEqual(out[120, 60], surface.GRASS, "a working line as before")
+        name, model = surface.MATERIALS[surface.RAIL_BED]
+        mod = os.path.join(os.path.dirname(__file__), "..", "..", "mod", "beamng_earth")
+        with open(os.path.join(mod, "levels", "beamng_earth", "art", "terrains", "main.materials.json")) as fh:
+            self.assertEqual(json.load(fh)[name]["groundmodelName"], model)
+        for lua in ("terrain.lua", "groundcover.lua"):
+            with open(os.path.join(mod, "lua", "ge", "extensions", "beamngEarth", lua)) as fh:
+                self.assertIn(name, fh.read(), lua)
 
     def test_drawn_follows_columns_added_after_a_first_ask(self):
         """drawn() keeps a layer's answers (earthfast.rail_drawn_cols) only while its columns are the same: the OSM

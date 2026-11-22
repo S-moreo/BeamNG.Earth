@@ -746,42 +746,5 @@
     ],
     "groundType": "GRAVEL",
     "translucent": false
-  },
-  "bne_rail_bed_overgrown_b": {
-    "name": "bne_rail_bed_overgrown_b",
-    "mapTo": "bne_rail_bed_overgrown_b",
-    "class": "Material",
-    "version": 1.5,
-    "persistentId": "813a40bd-7dce-5243-b6f2-b13acf359f7b",
-    "Stages": [
-      {
-        "baseColorMap": "/assets/materials/terrain/grass/t_dirt_vegetation/t_dirt_vegetation_b.png",
-        "normalMap": "/assets/materials/terrain/grass/t_dirt_vegetation/t_dirt_vegetation_nm.png",
-        "roughnessMap": "/assets/materials/terrain/grass/t_dirt_vegetation/t_dirt_vegetation_r.png",
-        "ambientOcclusionMap": "/assets/materials/terrain/grass/t_dirt_vegetation/t_dirt_vegetation_ao.png",
-        "detailMap": "/assets/materials/terrain/soil/t_gravel/t_gravel_b.png",
-        "detailMapUseUV": 0,
-        "detailScale": [
-          0.37,
-          0.37
-        ],
-        "detailBaseColorMapStrength": 0.8,
-        "detailNormalMap": "/assets/materials/terrain/soil/t_gravel/t_gravel_nm.png",
-        "normalDetailMapUseUV": 0,
-        "detailNormalMapStrength": 0.6,
-        "metallicFactor": 0,
-        "baseColorFactor": [
-          0.6,
-          0.58,
-          0.48,
-          1
-        ]
-      },
-      {},
-      {},
-      {}
-    ],
-    "groundType": "GRAVEL",
-    "translucent": false
   }
 }

@@ -166,6 +166,8 @@ M.LOOKS = {
   bngEarthGroundDryGrass = look('grass/t_dirt_dry_grass/t_dirt_dry_grass', 2, 'grass/macro_dry_grass_02/t_macro_dry_grass_02', 16),
   bngEarthGroundCrop = look('soil/dirt_crumbly/t_dirt_crumbly', 2, 'soil/macro_holes/t_macro_holes', 16),
   bngEarthGroundSand = look('sand/t_sand/t_sand', 2, 'sand/t_macro_sand/t_macro_sand', 32),
+  -- an abandoned railway's old bed (server/surface.py RAIL_BED): gravel, its own GroundCover layer (groundcover.lua)
+  bngEarthGroundRailBed = look('soil/t_gravel/t_gravel', 2, 'soil/t_macro_flows/t_macro_flows', 8, 0.3, 0.2, 0.12),
 }
 -- The tile layers' stand-ins when the server could not write their PNGs (terraintex.py: no game folder, a failed
 -- decode): the stock asphalt grain they had before, not a missing texture (a cobbled street plainer than before)

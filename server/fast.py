@@ -22,7 +22,7 @@ if os.environ.get("BNE_BATTER", "off") == "vanilla":
     # set to 503 outright, which let a 505 binary start in that mode and fail at the first sidewalk, Codex r2a18)
     MIN_VERSION = max(MIN_VERSION, 531)     # (522: batter.rs cap_loosen; 531: its explicit continuation links)
 if os.environ.get("BNE_RAIL_ABANDONED", "worn") == "bed":
-    MIN_VERSION = max(MIN_VERSION, 603)     # (603: rail_tile_mesh reads railways.BARE_WEARS: an old bed, no rails)
+    MIN_VERSION = max(MIN_VERSION, 604)     # (rail_tile_mesh reads railways.BARE_WEARS: an old bed, no rails, on the ground)
 
 
 class NativeMissing(RuntimeError):

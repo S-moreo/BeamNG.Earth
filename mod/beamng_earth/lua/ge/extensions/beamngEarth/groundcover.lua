@@ -70,6 +70,10 @@ M.DEFS = {
   { source = 'hirochi', src = 'small_grass_close', name = 'small_grass_close_forest', layer = 'bngEarthGroundForest', share = 0.08 },
   { source = 'wcusa', src = 'grass_dry_1', name = 'grass_dry_1_dry', layer = 'bngEarthGroundDryGrass', share = 0.2 },
   { source = 'hirochi', src = 'small_grass_close', name = 'small_grass_close_dry', layer = 'bngEarthGroundDryGrass', share = 0.06 },
+  -- (server/surface.py RAIL_BED, Smore 2026-11-22: the old bed "needs grass blades") an abandoned railway's bed: short
+  -- grass and a few dry tufts up through its gravel (the bed's mesh lies 6 cm over the ground: railways.BED_LIFT_M)
+  { source = 'hirochi', src = 'small_grass_close', name = 'small_grass_close_railbed', layer = 'bngEarthGroundRailBed', share = 0.15 },
+  { source = 'wcusa', src = 'grass_dry_1', name = 'grass_dry_1_railbed', layer = 'bngEarthGroundRailBed', share = 0.06 },
 }
 M.PREFIX = 'bngEarthGC_'
 -- set on every object after the stock fields (see the header)

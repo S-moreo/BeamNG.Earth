@@ -245,6 +245,10 @@ impl<'p> Tile<'p> {
         let w: usize = self.worn.call_method1("get", (&fid, 0))?.extract()?;
         // (a wear in railways.BARE_WEARS: the bed alone, no rails, sleepers or rail colliders: BNE_RAIL_ABANDONED=bed)
         let bare = self.rw.getattr("BARE_WEARS")?.contains(w)?;
+        if bare && kind == "ground" {
+            // (an old bed lies on the drawn ground as it is, not on a working line's smoothed profile: railways._bare_bed)
+            zb = self.rw.call_method1("_bare_bed", (&xy, &self.ground))?;
+        }
         let rw = self.rw.clone();
         let mat = |name: &str| -> PyResult<String> { rw.getattr(name)?.get_item(w)?.extract() };
         let ballast = self.mesh.borrow_mut().mat(&mat("BALLAST_WORN")?);

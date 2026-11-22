@@ -95,7 +95,7 @@ RAIL_LIFECYCLE = os.environ.get("BNE_RAIL_LIFECYCLE", "off") == "on"
 # OSM still has standing (_level_ranges: railtags' osm_bridge_gone). Disused lines (wear 1: rails still in place) are
 # as before. Off by default until reviewed in game.
 ABANDONED_BED = os.environ.get("BNE_RAIL_ABANDONED", "worn") == "bed"
-BARE_WEARS = frozenset({2}) if ABANDONED_BED else frozenset()      # (read by earthfast's rail_tile_mesh, 603)
+BARE_WEARS = frozenset({2}) if ABANDONED_BED else frozenset()      # (read by earthfast's rail_tile_mesh, 603+)
 # Railway-at-road fixes (the user's in-game reports r63 / r64 / r92, 2026-11-17; the Revamped roads switch set): a track
 # that ends at a road with its line going on beyond it (a worn line cut at the road, a siding mapped up to each side of
 # a paved-over crossing) gets no buffer stop there (dead_ends, _road_ends); a level crossing is one record per track
@@ -893,6 +893,20 @@ def bare(feats, i):
         return False
     got = drawn(feats, i)
     return got is not None and got[1] in BARE_WEARS
+
+
+# An old bed's gravel lies just over the ground as it is (Boyers PA, 2026-11-22: laid on a working line's smoothed,
+# grade-limited profile it rode up to 1.8 m over a dip for 40 m, a squared-off fill bank; the lidar's bare earth already
+# holds the old line's real cuttings and banks). The grass of the bed's own ground layer (surface.py RAIL_BED) grows
+# through it: GroundCover stands on the ground, BED_LIFT_M under the gravel's top.
+BED_LIFT_M = 0.06
+
+
+def _bare_bed(xy, ground):
+    """The bed line (the ballast's top less BALLAST_H) of an old bed's ground part xy (k, 2): the drawn ground there
+    (ground(xy) -> z) less BALLAST_H, plus BED_LIFT_M (read by earthfast's rail_tile_mesh, 604)."""
+    z = np.asarray(ground(np.asarray(xy, np.float64)[:, :2]), np.float64).reshape(-1)
+    return z - BALLAST_H + BED_LIFT_M
 
 
 def _level_ranges(feats, i):
