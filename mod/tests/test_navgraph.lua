@@ -360,6 +360,12 @@ do
   T.check(vars.activeAmount == 10, 'off again: the player\'s amount back: ' .. tostring(vars.activeAmount))
   N._adaptiveTick(245)
   T.check(vars.activeAmount == 10 and N.trafficStatus().base == nil, 'and left alone')
+  -- traffic started from the pause menu after a level start with traffic disabled: kept (Smore 2026-11-22: zeroed a
+  -- second after it spawned)
+  N.takeChoice({ trafficMode = 'disabled', trafficParked = 'disabled' })
+  vars.activeAmount = 7
+  for t = 250, 260 do N._adaptiveTick(t) end
+  T.check(vars.activeAmount == 7, 'menu-started traffic kept: ' .. tostring(vars.activeAmount))
   N.reset()
   gameplay_traffic = gt0
   if not log0 then log = nil end

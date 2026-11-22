@@ -1204,11 +1204,14 @@ local function updateAdaptive(now)
   local vars = gt.getTrafficVars and gt.getTrafficVars() or {}
   local cur = tonumber(vars.activeAmount)
   if cur == nil then return end
-  if proxyOnly or not M.choice.traffic then
+  if proxyOnly then
     if cur ~= 0 then pcall(gt.setActiveAmount, 0) end
     adaptive.seen, adaptive.paused = 0, true
     return
   end
+  -- (traffic the level's choice did not start, from the pause or radial menu: left as the player set it; zeroed here
+  -- every second, it was gone a second after it spawned, Smore 2026-11-22)
+  if not M.choice.traffic then return end
   if not M.ADAPTIVE then
     if adaptive.touched and cur == adaptive.seen and adaptive.base ~= nil and not adaptive.paused then
       pcall(gt.setActiveAmount, adaptive.base)               -- (off again: the player's amount back)
