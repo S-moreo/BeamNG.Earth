@@ -408,7 +408,7 @@ def deck_bank(spec, xy, goes_on):
     the deck's ends. None: level."""
 
     import grading
-    if grading.bank_design(spec) is None or len(xy) < 2:
+    if not grading.BANK_ON or getattr(spec, "cls", None) not in grading.BANK_DESIGN or len(xy) < 2:
         return None
     xy = np.asarray(xy, np.float64)[:, :2]
     parts = []

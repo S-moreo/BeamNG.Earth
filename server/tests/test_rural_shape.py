@@ -105,53 +105,155 @@ class RuralBankTest(unittest.TestCase):
             self.assertIsNone(grading.bank_design(spec("service")))
 
 
-class TerrainLeanTest(unittest.TestCase):
-    """plan_roads: the land's cross slope first, half the design rule's lean on top (RURAL_LEAN_*)."""
-    FRAME = geodesy.EnuFrame(39.66, -79.92)
+def cross(x, tilt, hill, at=0.0, half=2.5):
+    """The elevation x m to the left of a line whose real road lies `at` m to its left: a carriageway half m either side
+    of its middle rising `tilt` m per m to the left, the hillside past both edges rising `hill` m per m to the left."""
+    d = np.asarray(x, np.float64) - at
+    return np.where(np.abs(d) <= half, tilt * d, tilt * half * np.sign(d) + hill * (d - half * np.sign(d)))
 
-    def plan(self, elev, cls="tertiary", xy=None):
+
+class BenchLeanTest(unittest.TestCase):
+    """grading.bench_lean: the real road's cross slope in the elevation across the map line (RURAL_BENCH_*)."""
+
+    def lean(self, tilt, hill, at=0.0, noise=0.0, **kw):
+        z = cross(grading.bench_offsets(), tilt, hill, at, **kw)[None, :].repeat(4, axis=0)
+        if noise:
+            z = z + np.random.default_rng(7).normal(0.0, noise, z.shape)
+        return grading.bench_lean(z)
+
+    def test_bench_under_the_line_in_a_hillside(self):
+        np.testing.assert_allclose(self.lean(0.02, 0.30), 0.02, atol=1e-9)
+        np.testing.assert_allclose(self.lean(-0.04, 0.30), -0.04, atol=1e-9)    # (adverse: out of the hillside)
+
+    def test_bench_beside_the_line(self):
+        # the map line 2 m off the real road: a reading across the line itself spans the cut bank
+        for at in (-2.0, 2.0):
+            np.testing.assert_allclose(self.lean(-0.015, 0.30, at), -0.015, atol=1e-9)
+            x = np.array([-2.35, 2.35])
+            z = cross(x, -0.015, 0.30, at)
+            self.assertGreater((z[1] - z[0]) / 4.7, 0.05)
+
+    def test_level_road_reads_level(self):
+        np.testing.assert_allclose(self.lean(0.0, 0.45, 1.0), 0.0, atol=1e-9)
+
+    def test_banked_road_on_level_land(self):
+        # (the strips half on the level land beside it are the more level ones: bent, they lose to the carriageway)
+        np.testing.assert_allclose(self.lean(0.06, 0.0), 0.06, atol=1e-9)
+        np.testing.assert_allclose(self.lean(-0.06, 0.0, at=1.0, half=3.5), -0.06, atol=1e-9)
+
+    def test_open_slope_is_no_road(self):
+        self.assertTrue(np.isnan(self.lean(0.06, 0.06)).all())          # (leans as the land round it: no strip shows)
+        self.assertTrue(np.isnan(self.lean(0.2, 0.2)).all())            # (steeper than any carriageway)
+        np.testing.assert_allclose(self.lean(0.02, 0.02), 0.02, atol=1e-9)      # (near level: believed)
+
+    def test_road_past_the_reach_is_not_guessed(self):
+        # the real road 6 m off the line: the strips in reach lie on the 8 % fill
+        self.assertTrue(np.isnan(self.lean(0.0, 0.08, 6.0, half=1.5)).all())
+
+    def test_rough_ground_is_no_road(self):
+        self.assertTrue(np.isnan(self.lean(0.0, 0.0, noise=0.10)).all())
+
+    def test_lidar_noise_is_a_road(self):
+        got = self.lean(0.03, 0.30, noise=0.005)
+        self.assertTrue(np.isfinite(got).all())
+        np.testing.assert_allclose(got, 0.03, atol=0.012)
+
+    def test_unread_elevation(self):
+        z = np.full((2, len(grading.bench_offsets())), np.nan)
+        self.assertTrue(np.isnan(grading.bench_lean(z)).all())
+
+
+class RuralLeanTest(unittest.TestCase):
+    """grading.rural_lean: the strips' slopes along the road (median, Gaussian, fades)."""
+
+    def test_steady_lean_kept_and_seen(self):
+        lt, conf = grading.rural_lean(np.full(100, 0.03), 2.0, (False, False))
+        np.testing.assert_allclose(lt, 0.03, atol=1e-9)
+        np.testing.assert_allclose(conf, 1.0, atol=1e-9)
+
+    def test_no_strip_is_level_and_unseen(self):
+        lt, conf = grading.rural_lean(np.full(100, np.nan), 2.0, (False, False))
+        np.testing.assert_allclose(lt, 0.0, atol=1e-12)
+        np.testing.assert_allclose(conf, 0.0, atol=1e-12)
+
+    def test_lone_reading_dropped(self):
+        lean = np.zeros(100)
+        lean[50] = 0.08                                                 # (a driveway's apron)
+        lt, _conf = grading.rural_lean(lean, 2.0, (False, False))
+        self.assertLess(float(np.abs(lt).max()), 1e-9)
+
+    def test_held_within_the_most(self):
+        lt, _conf = grading.rural_lean(np.full(100, 0.2), 2.0, (False, False))
+        self.assertLessEqual(float(lt.max()), grading.RURAL_LEAN_MAX + 1e-9)
+
+    def test_fades_level_at_a_flagged_end(self):
+        lt, _conf = grading.rural_lean(np.full(100, 0.03), 2.0, (True, False))
+        self.assertEqual(float(lt[0]), 0.0)
+        self.assertAlmostEqual(float(lt[-1]), 0.03)
+        self.assertAlmostEqual(float(lt[int(grading.RURAL_BANK_FADE_M / 2.0) + 1]), 0.03)
+
+    def test_road_going_on_smoothed_in_then_dropped(self):
+        lean = np.r_[np.full(20, 0.06), np.full(100, 0.0), np.full(10, 0.06)]
+        lt, conf = grading.rural_lean(lean, 2.0, (False, False), (20, 10))
+        self.assertEqual((len(lt), len(conf)), (100, 100))
+        self.assertAlmostEqual(float(lt[0]), 0.03, places=2)            # (half way between the two at the join)
+        self.assertLess(abs(float(lt[50])), 1e-3)
+
+
+class TerrainLeanTest(unittest.TestCase):
+    """plan_roads: a country road takes the real road's cross slope where the elevation shows it (benches), the design
+    rule's share where it shows no roads."""
+    FRAME = geodesy.EnuFrame(39.66, -79.92)
+    EAST = np.c_[np.arange(-300.0, 300.0, 2.0), np.zeros(300)]         # due east: its left is north
+
+    def plan(self, elev, cls="tertiary", xy=None, benches=True, on=True):
         xy = bend(40.0) if xy is None else xy
         la, lo, _ = self.FRAME.enu_to_geodetic(xy[:, 0], xy[:, 1], 0.0)
-        with mock.patch.object(grading, "RURAL_BANK_ON", True):
-            return grading.plan_roads(self.FRAME, [(np.c_[lo, la], spec(cls))], elev, cuts=False)[0]
+        with mock.patch.object(grading, "RURAL_BANK_ON", on):
+            return grading.plan_roads(self.FRAME, [(np.c_[lo, la], spec(cls))], elev, cuts=False, benches=benches)[0]
 
-    def tilt(self, slope_north):
-        """Ground rising slope_north m per m toward the north (the frame's +y)."""
+    def land(self, tilt, hill, at=0.0):
+        """cross() of the frame's north: the real road of a line due east."""
         def elev(la, lo):
             _e, n, _u = self.FRAME.geodetic_to_enu(np.asarray(la), np.asarray(lo), 0.0)
-            return 100.0 + slope_north * np.asarray(n)
+            return 100.0 + cross(np.asarray(n), tilt, hill, at)
         return elev
 
-    def test_flat_ground_half_the_design_lean(self):
-        p = self.plan(self.tilt(0.0))
-        self.assertIsNotNone(p.bank)
-        self.assertAlmostEqual(float(-p.bank.min()), grading.RURAL_CURVE_SHARE * grading.RURAL_BANK_E_MAX, places=2)
+    def mid(self, p):
+        return p.bank[len(p.bank) // 3: 2 * len(p.bank) // 3]
 
-    def test_straight_road_on_a_hillside_leans_with_it(self):
-        xy = np.c_[np.arange(-300.0, 300.0, 2.0), np.zeros(300)]       # due east: its left is north
-        p = self.plan(self.tilt(0.04), xy=xy)
-        mid = p.bank[len(p.bank) // 3: 2 * len(p.bank) // 3]
-        np.testing.assert_allclose(mid, 0.04, atol=0.003)              # left (uphill) side high, as the land
+    def test_takes_the_real_roads_lean(self):
+        p = self.plan(self.land(0.025, 0.30), xy=self.EAST)
+        np.testing.assert_allclose(self.mid(p), 0.025, atol=1e-3)
 
-    def test_bend_against_the_hill_is_not_banked_in(self):
-        # the bend runs east, then turns left to the north; ground rising to the north lifts its inner (left) side:
-        # the land's lean (+5 % on the east leg) against the design rule's (-3 % in the bend) leaves no inward bank
-        p = self.plan(self.tilt(0.05))
-        flat = self.plan(self.tilt(0.0))
-        apex = np.array([40.0 * math.sin(math.pi / 4), 40.0 * (1 - math.cos(math.pi / 4))])
-        i = int(np.argmin(np.hypot(*(np.asarray(p.xy)[:, :2] - apex).T)))
-        i0 = int(np.argmin(np.hypot(*(np.asarray(flat.xy)[:, :2] - apex).T)))
-        self.assertLess(float(flat.bank[i0]), -0.01)                    # flat: leans in at the apex
-        self.assertGreater(float(p.bank[i]), -0.005)                    # against the hill: level or leaning out
-        self.assertGreater(float(p.bank.max()), 0.03)                  # leaning out (with the land) on the east leg
-        self.assertLessEqual(float(np.abs(p.bank).max()), grading.RURAL_TOTAL_MAX + 1e-9)
+    def test_takes_it_from_a_road_beside_the_line(self):
+        p = self.plan(self.land(-0.02, 0.30, at=-2.0), xy=self.EAST)
+        np.testing.assert_allclose(self.mid(p), -0.02, atol=1e-3)
+
+    def test_level_real_road_in_a_hillside_stays_level(self):
+        self.assertIsNone(self.plan(self.land(0.0, 0.30, at=2.0), xy=self.EAST).bank)
+
+    def test_open_hillside_does_not_lean_the_road(self):
+        self.assertIsNone(self.plan(self.land(0.06, 0.06), xy=self.EAST).bank)
+
+    def test_measured_level_bend_gets_no_made_up_lean(self):
+        self.assertIsNone(self.plan(self.land(0.0, 0.0)).bank)
+
+    def test_no_roads_in_the_elevation_share_of_the_rule(self):
+        p = self.plan(self.land(0.0, 0.0), benches=False)
+        want = grading.RURAL_CURVE_SHARE["tertiary"] * grading.RURAL_BANK_E_MAX
+        self.assertAlmostEqual(float(-p.bank.min()), want, places=2)
+        self.assertLessEqual(float(p.bank.max()), 1e-9)                 # (a left-hand bend: in, one way only)
+        self.assertIsNone(self.plan(self.land(0.0, 0.0), cls="residential", benches=False).bank)
+
+    def test_fades_level_at_a_loose_end(self):
+        p = self.plan(self.land(0.03, 0.30), xy=self.EAST)
+        self.assertEqual(float(p.bank[0]), 0.0)
+        self.assertEqual(float(p.bank[-1]), 0.0)
 
     def test_off_plans_level_across(self):
-        xy = bend(40.0)
-        la, lo, _ = self.FRAME.enu_to_geodetic(xy[:, 0], xy[:, 1], 0.0)
-        with mock.patch.object(grading, "RURAL_BANK_ON", False):
-            p = grading.plan_roads(self.FRAME, [(np.c_[lo, la], spec("tertiary"))], self.tilt(0.05), cuts=False)[0]
-        self.assertIsNone(p.bank)
+        self.assertIsNone(self.plan(self.land(0.03, 0.30), xy=self.EAST, on=False).bank)
+        self.assertIsNone(self.plan(self.land(0.0, 0.0), benches=False, on=False).bank)
 
 
 if __name__ == "__main__":

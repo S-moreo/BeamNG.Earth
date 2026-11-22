@@ -118,7 +118,7 @@ export const settingsSchema = [
         note: RESTART_NOTE },
       { id: "expRoadFollow", type: "bool", default: false, name: "Roads follow the land", desc: "Experimental. Roads keep more of the real hills and dips in the ground under them instead of being smoothed flat. Best where the elevation comes from lidar (most of the US and much of Europe); on the coarse global elevation roads get bumpier. Motorways and trunk roads are unchanged.",
         note: RESTART_NOTE },
-      { id: "expRuralBank", type: "bool", default: false, name: "Banked country roads", desc: "Experimental. Country roads below trunk roads lean into their bends, more the tighter the bend and the slower the road, up to 10 %. Town streets, slip roads, mountain pass roads and roundabouts stay level across.",
+      { id: "expRuralBank", type: "bool", default: false, name: "Banked country roads", desc: "Experimental. Country roads below trunk roads take the sideways tilt of the real road, read from lidar elevation: banked where the real bend is banked, level where it is level, up to 8 %. Where there is no lidar, main roads lean gently into their bends and back roads stay level. Town streets, slip roads, mountain pass roads, roundabouts and bridges stay level across.",
         note: RESTART_NOTE },
       { id: "expCliffWalls", type: "bool", default: false, name: "Rock faces in deep road cuts", desc: "Experimental. Where a country road runs through a deep cutting, the sides become rock faces instead of dry-stone walls.",
         note: RESTART_NOTE },

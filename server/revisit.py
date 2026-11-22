@@ -458,9 +458,15 @@ def keyed_env(k):
 # BNE_ROADSHAPE 9 (P3e, profile): a deck over another along it held as twins are, a twin run held whole once seeded
 # (earthfast 536); the coplanar trim on one seam, where both surfaces meet, past chunk ends inside a part
 # (deck_trim_coplanar); a branch's surface in its union laid on the through deck's; union decks' rows unsimplified.
+# BNE_ROAD_FOLLOW 2: the shorter smoothing (grading.FOLLOW_CLASS_SIGMA_M 12-4 m, an 8 m median; 14-6 m and 12 m
+# before). BNE_RURAL_BANK 3: the country roads' cross slope read off the real road in the elevation
+# (grading.bench_lean) with the design rule's share only where the elevation shows no roads; 2 was the slope between
+# two points inside the mapped edges plus half the rule, 1 the rule alone. Neither had a version at first, and a
+# place driven with the switch on kept that try's plans through the next ones (found 2026-11-21: the roads north of
+# Bakers Ridge Road, Morgantown, driven on try 1, still banked 10 % on try 2).
 SWITCH_VERSIONS = {"BNE_LEVEL_SPACING": 5, "BNE_FAST_DECK_GROUND": 2, "BNE_UNDER_SPEED": 2, "BNE_FAST_GAP": 5,
                    "BNE_RACEWAY_DIG": 2, "BNE_DIRT_BUMP": 2, "BNE_DIRT_BANK": 2, "BNE_DECK_STRUCT": 5,
-                   "BNE_ROADSHAPE": 9, "BNE_DECK_SKEW": 1}
+                   "BNE_ROADSHAPE": 9, "BNE_DECK_SKEW": 1, "BNE_ROAD_FOLLOW": 2, "BNE_RURAL_BANK": 3}
 
 
 def keyed_value(k, v):
