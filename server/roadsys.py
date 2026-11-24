@@ -93,6 +93,7 @@ HEIGHTS_KERNEL = 602        # earthfast.roadsys_heights_reads / roadsys_heights
 STRUCTURES_KERNEL = 603     # earthfast.RoadsysEnds / roadsys_handover_zone, road_exact's "ho" parts
 SURFACE_KERNEL = 606        # earthfast.roadsys_decks
 XSEC = os.environ.get("BNE_ROADSYS_XSEC", "off").strip().lower() == "on"
+XSEC_KERNEL = 617           # earthfast.RoadsysSegments(xsec=...), native/roadsys xsec.rs (617: with areas=, fit= in one binary; trunk 616 has no xsec)
 FOLLOW_KERNEL = 623         # earthfast.roadsys_square(follow=), native/roadsys prof.rs follow_ls
 # Roads follow the land in the squares too (grading.FOLLOW_ON, the settings page's "Roads follow the land", GitHub
 # #1527): with it on, a square whose ground is not the coarse global model (COARSE at its centre: lidar and the national
@@ -101,7 +102,6 @@ FOLLOW_KERNEL = 623         # earthfast.roadsys_square(follow=), native/roadsys 
 # gets the same answer, and the squares' blend fades one choice into the next.
 FOLLOW_ON = os.environ.get("BNE_ROAD_FOLLOW", "off") == "on"
 COARSE = None               # (lat, lon) -> is the ground there only the coarse global model (blockworker: dem.coarse_at)
-XSEC_KERNEL = 617           # earthfast.RoadsysSegments(xsec=...), native/roadsys xsec.rs (617: with areas=, fit= in one binary; trunk 616 has no xsec)
 
 FRAME_Z = 8                 # the region frames' Web-Mercator zoom
 CUT = (4000.0, 2000.0)       # strokes cut at a joint past every line of this grid (m, offset): net.rs Opts
