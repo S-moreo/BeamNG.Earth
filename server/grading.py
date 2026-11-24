@@ -88,7 +88,8 @@ MEDIAN_M = float(os.environ.get("BNE_GRADE_MEDIAN", "24"))
 # at least half that long stays (profile_median; motorways, trunks and the major corridor keep MEDIAN_M, which takes the
 # tree and bridge spikes out of coarse elevation, #271). One switch for every caller (the chains', the pins', l0roads' profile_sigma): pieces of one
 # road planned in other calls still smooth alike. On the coarse global model the roads ride more of its noise: a
-# switch for lidar places. BNE_ROAD_FOLLOW=on (the settings page's "Roads follow the land").
+# switch for lidar places. BNE_ROAD_FOLLOW=on (the settings page's "Roads follow the land"). The road system's profile
+# squares (BNE_ROADSYS) take it too, only where their ground is not the coarse model (roadsys.FOLLOW_ON, prof.rs follow_ls).
 FOLLOW_ON = os.environ.get("BNE_ROAD_FOLLOW", "off") == "on"
 # (first cut 14 / 11 / 9 / 8 / 7 / 6 m and a 12 m median; the user on Bakers Ridge Road, Morgantown, a rough residential
 # street: "roads still feel a little flattened", 2026-11-21. The plan's 4 m vertices and the physics block's 2 m lattice

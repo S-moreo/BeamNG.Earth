@@ -93,6 +93,14 @@ HEIGHTS_KERNEL = 602        # earthfast.roadsys_heights_reads / roadsys_heights
 STRUCTURES_KERNEL = 603     # earthfast.RoadsysEnds / roadsys_handover_zone, road_exact's "ho" parts
 SURFACE_KERNEL = 606        # earthfast.roadsys_decks
 XSEC = os.environ.get("BNE_ROADSYS_XSEC", "off").strip().lower() == "on"
+FOLLOW_KERNEL = 623         # earthfast.roadsys_square(follow=), native/roadsys prof.rs follow_ls
+# Roads follow the land in the squares too (grading.FOLLOW_ON, the settings page's "Roads follow the land", GitHub
+# #1527): with it on, a square whose ground is not the coarse global model (COARSE at its centre: lidar and the national
+# models) solves its roads below trunk with grading's shorter smoothing and the ground's own curves (prof.rs
+# follow_ls); on the coarse model they keep today's, which takes its noise out. Per square, so every asker of a square
+# gets the same answer, and the squares' blend fades one choice into the next.
+FOLLOW_ON = os.environ.get("BNE_ROAD_FOLLOW", "off") == "on"
+COARSE = None               # (lat, lon) -> is the ground there only the coarse global model (blockworker: dem.coarse_at)
 XSEC_KERNEL = 617           # earthfast.RoadsysSegments(xsec=...), native/roadsys xsec.rs (617: with areas=, fit= in one binary; trunk 616 has no xsec)
 
 FRAME_Z = 8                 # the region frames' Web-Mercator zoom
@@ -560,6 +568,22 @@ def _g(ground_ll, frame):
     return ground
 
 
+def _follow(frame, win):
+    """FOLLOW_ON for the square of window win (the frame): not where COARSE says its centre's ground is the coarse
+    global model, nor without COARSE (no DEM to ask) or a kernel that takes it."""
+    if not FOLLOW_ON or COARSE is None:
+        return False
+    import fast
+    if int(getattr(fast._ef, "VERSION", 0)) < FOLLOW_KERNEL:
+        return False
+    la, lo, _ = frame.enu_to_geodetic(np.array([(win[0] + win[2]) / 2.0]), np.array([(win[1] + win[3]) / 2.0]), 0.0)
+    try:
+        return not COARSE(float(la[0]), float(lo[0]))
+    except Exception as e:      # (today's smoothing rather than none)
+        log.debug("roadsys follow: %s: %s", type(e).__name__, e)
+        return False
+
+
 def square(fid, frame, sq, cell_fn, ground_ll=None):
     """Square sq of region fid (frame): earthfast.RoadsysSquare, solved from the map cells covering its window (every
     one read through cell_fn: a short read faults the caller's revisit scope), memoised per process by those cells'
@@ -579,7 +603,8 @@ def square(fid, frame, sq, cell_fn, ground_ll=None):
         revisit.fault(here=True)        # (the caller's scope too: what is made from this square is not kept)
     stamps = tuple(cc.rows.get(str(k), (None,))[0] for k in cells)
     gfn = ground_ll or GROUND
-    mk = (fid, sq, stamps, getattr(gfn, "tag", getattr(gfn, "__name__", "")))
+    follow = _follow(frame, win)
+    mk = (fid, sq, stamps, getattr(gfn, "tag", getattr(gfn, "__name__", ""))) + (("follow",) if follow else ())
     with _memo_lock:
         got = _squares.get(mk)
         lk = _sq_locks.setdefault((fid, sq), threading.Lock())
@@ -599,7 +624,7 @@ def square(fid, frame, sq, cell_fn, ground_ll=None):
         if disk is not None and b.complete:
             import hashlib
             name = "sq%d.%d_%d_%d_%s" % (FORMAT, int(getattr(fast._ef, "VERSION", 0)), sq[0], sq[1],
-                                          hashlib.sha256(repr((fid, stamps, mk[3])).encode()).hexdigest()[:24])
+                                          hashlib.sha256(repr((fid, stamps) + mk[3:]).encode()).hexdigest()[:24])
             try:
                 data = disk[0](name)
                 if data is not None:
@@ -619,7 +644,8 @@ def square(fid, frame, sq, cell_fn, ground_ll=None):
                 dump = os.path.join(DUMP_DIR, "%d_%d.rssq" % sq)
             try:
                 with revisit.scope() as sb:     # (what it reads: its ground, the measured decks)
-                    got = fast._ef.roadsys_square(segs, sq, _g(gfn, frame), CUT, dump, _obs(frame))
+                    kw = {"follow": True} if follow else {}     # (a kernel before FOLLOW_KERNEL: never asked to)
+                    got = fast._ef.roadsys_square(segs, sq, _g(gfn, frame), CUT, dump, _obs(frame), **kw)
             except Exception as e:      # (its ground not at hand, a DEM tile missing: no square, the asker not kept)
                 revisit.fault(here=True)
                 with _memo_lock:

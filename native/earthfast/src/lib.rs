@@ -7791,6 +7791,8 @@ fn earthfast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // hung the exit, server/fast.py's atexit hook calls it)
     m.add_function(wrap_pyfunction!(begin_exit, m)?)?;
     m.add_function(wrap_pyfunction!(exit_guard_counts, m)?)?;
-    m.add("VERSION", 622)?;
+    // 623: roadsys_square(follow=): roads below trunk follow more of the ground in that square (BNE_ROAD_FOLLOW where
+    // the ground is not the coarse global model, server/roadsys.py square; native/roadsys prof.rs follow_ls)
+    m.add("VERSION", 623)?;
     Ok(())
 }

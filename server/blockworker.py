@@ -4613,4 +4613,6 @@ def _square_disk():
 if _roadsys.HEIGHTS:
     _roadsys.GROUND = plan_elev
     _roadsys.DISK_FN = _square_disk
+    _roadsys.COARSE = lambda la, lo: bool(getattr(getattr(_s, "md", None), "dem", None) is not None
+                                          and _s.md.dem.coarse_at(la, lo))
 _roadsys.AREAS_MD_FN = lambda: getattr(_s, "md", None)     # (BNE_ROADSYS_AREAS: the decks' mapped road areas)

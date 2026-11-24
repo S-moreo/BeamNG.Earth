@@ -309,10 +309,12 @@ pub fn roadsys_squares_of_box(bbox: [f64; 4]) -> Vec<(i64, i64)> { roadsys::squa
 #[pyfunction]
 /// obs(runs) -> heights: the measured deck heights per structure run [(points (n, 2), half width, level)], an array
 /// per run (NaN: none), or None.
-#[pyo3(signature = (segs, sq, ground, cut = (4000.0, 2000.0), dump = None, obs = None))]
+/// follow: roads below trunk follow more of the ground (BNE_ROAD_FOLLOW where the square's ground is not the coarse
+/// global model: roadsys.square decides; roadsys Opts.follow).
+#[pyo3(signature = (segs, sq, ground, cut = (4000.0, 2000.0), dump = None, obs = None, follow = false))]
 #[allow(clippy::too_many_arguments)]
 pub fn roadsys_square(py: Python<'_>, segs: PyRef<'_, RoadsysSegments>, sq: (i64, i64), ground: Bound<'_, PyAny>,
-                      cut: (f64, f64), dump: Option<String>, obs: Option<Bound<'_, PyAny>>) -> PyResult<RoadsysSquare> {
+                      cut: (f64, f64), dump: Option<String>, obs: Option<Bound<'_, PyAny>>, follow: bool) -> PyResult<RoadsysSquare> {
     let win = roadsys::square::window(sq);
     // (the squares' heights are the lane rules' own: no mapped areas in them, BNE_ROADSYS_AREAS or not)
     let place = Place { segs: segs.place.segs.iter().filter(|s| roadsys::product::seg_in(s, &[win])).cloned().collect(), areas: Vec::new(),
@@ -353,7 +355,7 @@ pub fn roadsys_square(py: Python<'_>, segs: PyRef<'_, RoadsysSegments>, sq: (i64
             }
         })
     };
-    let out = py.detach(|| roadsys::square::solve_obs(&place, sq, &g_of, Some(&o_of), opts(cut)));
+    let out = py.detach(|| roadsys::square::solve_obs(&place, sq, &g_of, Some(&o_of), roadsys::net::Opts { follow, ..opts(cut) }));
     if let Some(e) = err.lock().unwrap().take() { return Err(e); }
     if let Some(path) = dump {
         asked.lock().unwrap().extend_from_slice(&seen.lock().unwrap());

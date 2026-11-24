@@ -72,6 +72,9 @@ const UNDER_OBS_M: f64 = 25.0;
 const UNDER_FILL_M: f64 = 4.0;      // m past a structure's half width its crossed road's ground is lined across
 const UNDER_FILL_DZ: f64 = 0.3;     // m a ground point stands over that line to be taken for the structure      // m round a stroke's crossing under a structure its measurements are left out             // a measured deck knot's weight (per m: a ground knot's)           // m a ground road may dip under its ground (an underpass's cut)      // m a relaxed floor keeps under what the grades reach
 pub const CAP_KM: f64 = 40.0;
+const FOLLOW_LINK_SIGMA_M: f64 = 8.0;  // (grading.FOLLOW_LINK_SIGMA_M) a slip road's, roads following the land
+const FOLLOW_HALF_K: f64 = 1.1774100225154747;   // sqrt(2 ln 2): follow_ls
+const FOLLOW_CURVE_K: usize = 4;      // knots either side the ground's own curvature is read over (follow: comfort)
 const STORE_MAX: usize = 4096;
 
 #[derive(Clone, Debug, Default)]
@@ -253,6 +256,26 @@ fn class_weight(net: &Net, si: usize) -> f64 {
     if link { 2.0 } else { match st.cls { 1 => 10.0, 2 => 6.0, 3 => 2.0, _ => 1.0 } }
 }
 
+/// Roads follow the land (Opts.follow; grading.FOLLOW_CLASS_SIGMA_M, GitHub #1527): the smoothing length of a stroke below
+/// trunk roads, None for the rest (motorways and trunks keep the design speed's). Tier A's z'' penalty keeps
+/// 1 / (1 + (k Ls)^4) of a wave of wavenumber k, grading's Gaussian exp(-(k sigma)^2 / 2): both keep half at
+/// Ls = sigma / sqrt(2 ln 2), so a road here keeps what the same road keeps in grading. At least one knot spacing
+/// (the knots resolve nothing shorter) and never longer than the design speed's.
+fn follow_ls(net: &Net, si: usize) -> Option<f64> {
+    let st = &net.strokes[si];
+    if !net.opts.follow || st.cls <= 2 || matches!(st.cls_s.as_str(), "motorway" | "trunk") {
+        return None;
+    }
+    let link = st.parts.iter().any(|p| net.segs[net.edges[p.edge].seg].link);
+    let sigma = if link { FOLLOW_LINK_SIGMA_M } else {
+        match st.cls_s.as_str() { "primary" => 12.0, "secondary" => 9.0, "tertiary" => 6.0, "unclassified" => 5.0, _ => 4.0 }
+    };
+    Some(clampf(sigma / FOLLOW_HALF_K, H_M, design_ls(st.kmh)))
+}
+
+/// m: Tier A's smoothing length at a design speed.
+fn design_ls(kmh: f64) -> f64 { clampf(0.4 * kmh, 15.0, 60.0) }
+
 /// The approach reach of a stroke: 2 x the vertical curve that takes its class's grade at the comfort limit.
 pub fn reach_m(net: &Net, si: usize) -> f64 {
     let v = (net.strokes[si].kmh / 3.6).max(5.0);
@@ -402,7 +425,8 @@ fn add_spans(net: &Net, spans: &[Span], h: &[f64], g: &[Vec<f64>], ob: &[Vec<f64
         let gl = grade_limit(net, sp.si);
         let v = (st.kmh / 3.6).max(5.0);
         let kappa = A_MAX / (v * v);
-        let ls = clampf(0.4 * st.kmh, 15.0, 60.0);
+        let fls = follow_ls(net, sp.si);
+        let ls = fls.unwrap_or_else(|| design_ls(st.kmh));
         let lam = ls * ls * ls * ls;
         let m = gs.len();
         let var = |i: usize| sp.base + (i - sp.i0);
@@ -460,7 +484,14 @@ fn add_spans(net: &Net, spans: &[Span], h: &[f64], g: &[Vec<f64>], ob: &[Vec<f64
         for i in (sp.i0 + 1)..sp.i1 {
             if measured(i - 1) && measured(i) && measured(i + 1) { continue; }   // (M2: a measured deck's own curves)
             let f = mklin(&[(var(i - 1), 1.0), (var(i), -2.0), (var(i + 1), 1.0)]);
-            let b = kappa * hh * hh;
+            // (follow: on the ground the comfort limit gives way to the ground's own curvature + 10 %, as the grade
+            // limit above to its own grade; read over +-FOLLOW_CURVE_K knots, so one knot's noise is no curve)
+            let mut b = kappa * hh * hh;
+            if fls.is_some() && i >= FOLLOW_CURVE_K && i + FOLLOW_CURVE_K < m && st.support_at(i as f64 * hh).kind == SUP_GROUND {
+                let d = (FOLLOW_CURVE_K as f64) * hh;
+                let cg = absf(gs[i - FOLLOW_CURVE_K] - 2.0 * gs[i] + gs[i + FOLLOW_CURVE_K]) / (d * d);
+                if cg * 1.1 > kappa { b = cg * 1.1 * hh * hh; }
+            }
             qp.cons.push(Ineq { f: f.clone(), bound: b, ge: false, w: W_COMFORT, kind: 2, orig: f64::NAN });
             qp.cons.push(Ineq { f, bound: -b, ge: true, w: W_COMFORT, kind: 2, orig: f64::NAN });
         }
@@ -1265,5 +1296,33 @@ mod tests {
         store_clear();
         let (z, _) = qp.solve(&mut ProfStats::default());
         assert!(absf(z[0] - 1.5) < 2e-3 && absf(z[1] + 1.5) < 2e-3, "{:?}", z);
+    }
+
+    /// The depth a lone 1.2 km road of class cls (kmh) keeps of a 100 m long, 2 m deep dip in the ground, follow on or off.
+    fn dip_kept(cls: i64, cls_s: &str, kmh: f64, follow: bool) -> f64 {
+        let seg = crate::io::Seg { fid: "r|0".into(), code: "US".into(), cls_s: cls_s.into(), pave: 7.0, drive: 7.0, inferred: 2, cls,
+                                   dir: 0, lanes: 2, lfw: -1, lbw: -1, kmh, lane_w: 3.5, pts: vec![[-600.0, 0.0], [600.0, 0.0]],
+                                   ..Default::default() };
+        let place = crate::io::Place { segs: vec![seg], ..Default::default() };
+        let net = crate::net::build_opts(&place, &[0], crate::net::Opts { follow, ..Default::default() });
+        let dip = |x: f64| if absf(x) < 50.0 { -1.0 - (std::f64::consts::PI * x / 50.0).cos() } else { 0.0 };
+        store_clear();
+        let pr = solve(&net, &|p: &[P2]| p.iter().map(|q| 20.0 + dip(q[0])).collect(), None);
+        let si = (0..net.strokes.len()).next().expect("a stroke");
+        let s_mid = net.strokes[si].len() / 2.0;
+        20.0 - pr.at(si, s_mid)
+    }
+
+    /// Roads follow the land (Opts.follow): a residential street and a secondary road keep most of a lidar dip with
+    /// it on, little without; a motorway is the same either way.
+    #[test]
+    fn roads_follow_the_land_below_trunk_roads_only() {
+        let (res_off, res_on) = (dip_kept(7, "residential", 40.0, false), dip_kept(7, "residential", 40.0, true));
+        let (sec_off, sec_on) = (dip_kept(4, "secondary", 70.0, false), dip_kept(4, "secondary", 70.0, true));
+        let (mw_off, mw_on) = (dip_kept(1, "motorway", 110.0, false), dip_kept(1, "motorway", 110.0, true));
+        eprintln!("dip kept of 2 m: residential {res_off:.2} -> {res_on:.2}, secondary {sec_off:.2} -> {sec_on:.2}, motorway {mw_off:.2} -> {mw_on:.2}");
+        assert!(res_on > 1.8 && res_on > res_off + 0.3, "{res_off} {res_on}");
+        assert!(sec_on > 1.6 && sec_on > sec_off + 0.5, "{sec_off} {sec_on}");
+        assert_eq!(mw_off.to_bits(), mw_on.to_bits());
     }
 }
