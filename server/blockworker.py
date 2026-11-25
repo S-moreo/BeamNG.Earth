@@ -365,6 +365,8 @@ def init(cache_dir, offline, roads, grading, road_widths, surface, warm_q, log_l
     sampler.maybe_start(f".{os.getpid()}")      # BNGE_SAMPLE: this worker's own sampling profile (debugging)
     xproc.PRIORITY = nice
     _s = _State(cache_dir, offline, roads, grading, road_widths, surface, airports, sea, gas_stations)
+    if _joint_built():
+        gradingmod.PROFILE_PINS = _profile_pins
     if warm_q is not None:      # (only the block pools plan roads ahead: the far, road and far building pools pass None)
         blockcache.warm()       # (and build blocks: their cache's code id now)
         threading.Thread(target=_read_warm, args=(warm_q,), daemon=True, name="warm-read").start()
@@ -4620,11 +4622,11 @@ navgraph = _accounted(navgraph)
 
 
 # (BNE_ROADSHAPE=profile, P3b, or BNE_ROADSYS=heights, M2: the plans' second stage pinned from this process's bridge
-# chains; M2's profiles on the plans' own ground, plan_elev)
+# chains; M2's profiles on the plans' own ground, plan_elev. Set by init, in a process with its state: the server's
+# own process imports this module too, and its grading pinned through _profile_pins read _s None, every anchor's
+# first block failing under Revamped roads, 2026-11-25; earthd builds those blocks in the block process instead)
 import roadshape as _roadshape  # noqa: E402
 import roadsys as _roadsys  # noqa: E402
-if _joint_built():
-    gradingmod.PROFILE_PINS = _profile_pins
 def _square_disk():
     """roadsys.DISK: the profile squares kept in the revisit cache (kind "rssq", keyed by the code, the switches and
     the map data's versions; the square's own name holds its region, square and cells' revisions)."""
