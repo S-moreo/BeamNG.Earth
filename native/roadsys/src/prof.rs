@@ -74,7 +74,6 @@ const UNDER_FILL_DZ: f64 = 0.3;     // m a ground point stands over that line to
 pub const CAP_KM: f64 = 40.0;
 const FOLLOW_LINK_SIGMA_M: f64 = 8.0;  // (grading.FOLLOW_LINK_SIGMA_M) a slip road's, roads following the land
 const FOLLOW_HALF_K: f64 = 1.1774100225154747;   // sqrt(2 ln 2): follow_ls
-const FOLLOW_CURVE_K: usize = 4;      // knots either side the ground's own curvature is read over (follow: comfort)
 const STORE_MAX: usize = 4096;
 
 #[derive(Clone, Debug, Default)]
@@ -483,15 +482,12 @@ fn add_spans(net: &Net, spans: &[Span], h: &[f64], g: &[Vec<f64>], ob: &[Vec<f64
         }
         for i in (sp.i0 + 1)..sp.i1 {
             if measured(i - 1) && measured(i) && measured(i + 1) { continue; }   // (M2: a measured deck's own curves)
+            // (follow: no comfort limit on the ground, as grading has none: the road takes the ground's own curves.
+            // Held to the design's, the short Ls pulled the profile into the limits round every pin and abutment and
+            // the active set took 24 rounds where it took 16, 27 % more time per square; and a dip still came out flat)
+            if fls.is_some() && st.support_at(i as f64 * hh).kind == SUP_GROUND { continue; }
             let f = mklin(&[(var(i - 1), 1.0), (var(i), -2.0), (var(i + 1), 1.0)]);
-            // (follow: on the ground the comfort limit gives way to the ground's own curvature + 10 %, as the grade
-            // limit above to its own grade; read over +-FOLLOW_CURVE_K knots, so one knot's noise is no curve)
-            let mut b = kappa * hh * hh;
-            if fls.is_some() && i >= FOLLOW_CURVE_K && i + FOLLOW_CURVE_K < m && st.support_at(i as f64 * hh).kind == SUP_GROUND {
-                let d = (FOLLOW_CURVE_K as f64) * hh;
-                let cg = absf(gs[i - FOLLOW_CURVE_K] - 2.0 * gs[i] + gs[i + FOLLOW_CURVE_K]) / (d * d);
-                if cg * 1.1 > kappa { b = cg * 1.1 * hh * hh; }
-            }
+            let b = kappa * hh * hh;
             qp.cons.push(Ineq { f: f.clone(), bound: b, ge: false, w: W_COMFORT, kind: 2, orig: f64::NAN });
             qp.cons.push(Ineq { f, bound: -b, ge: true, w: W_COMFORT, kind: 2, orig: f64::NAN });
         }
