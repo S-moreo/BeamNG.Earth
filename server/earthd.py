@@ -4501,7 +4501,11 @@ class Server:
                 # (its stand-in photo now, beside the heights, in the other lane's process: made after them it took
                 # 1.3-5 s more of every block at 100-200 mph down Manhattan, nyc_speed.py 2026-11-02)
                 self.quick_futs[(anchor.id, cx, cy)] = self.quick_early.submit(self._stand_in, anchor, cx, cy)
-        pool = self.block_pools[lane][0] if self.block_pools and progress is None else None
+        # (an anchor's first block here, for its download progress; but with the joint profile's pins (Revamped roads)
+        # in the block process too: only a block process grades with them (blockworker.init), and one built here had
+        # ground of its own at the bridges' approaches; before, here, every rebase failed, 2026-11-25)
+        pool = self.block_pools[lane][0] if self.block_pools and (progress is None or blockworker._joint_built()) \
+            else None
         key = (anchor.id, cx, cy)
         try:
             if pool is not None:
