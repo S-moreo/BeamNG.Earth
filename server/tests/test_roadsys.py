@@ -516,9 +516,22 @@ class SwitchTest(unittest.TestCase):
         targets, the profiles on the plans' own ground, only with heights (or P3b)."""
         src = (HERE / "blockworker.py").read_text(encoding="utf-8")
         self.assertIn("return roadshape.PROFILE_BUILT or roadsys.HEIGHTS", src)
-        self.assertIn("if _joint_built():\n    gradingmod.PROFILE_PINS = _profile_pins", src)
+        self.assertIn("    if _joint_built():\n        gradingmod.PROFILE_PINS = _profile_pins", src)
         i = src.index("if roadsys.HEIGHTS and not roadshape.PROFILE_BUILT:")
         self.assertIn("roadsys.pins_near(", src[i:i + 400])
+
+    def test_the_servers_own_process_grades_without_the_pins(self):
+        """The server's process imports blockworker but has no worker state: its grading never reads the pins through it
+        (every rebase's first block failed under Revamped roads, 'NoneType' object has no attribute 'md', 2026-11-25),
+        and with them on its anchors' first blocks go to the block process."""
+        import subprocess
+        code = "import grading, blockworker, roadsys; print(roadsys.HEIGHTS, grading.PROFILE_PINS is None)"
+        env = {**os.environ, "BNE_ROADSYS": "surface"}
+        out = subprocess.run([sys.executable, "-c", code], cwd=str(HERE), env=env, capture_output=True, text=True,
+                             timeout=120)
+        self.assertEqual(out.stdout.split()[-2:], ["True", "True"], out.stderr[-2000:])
+        src = (HERE / "earthd.py").read_text(encoding="utf-8")
+        self.assertIn("(progress is None or blockworker._joint_built())", src)
 
     def test_only_with_the_revamped_roads_setting(self):
         # (the user, 2026-11-24: "make sure the revamped roads toggle uses the updated rewritten roads": no page entry
